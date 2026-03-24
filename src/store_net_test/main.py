@@ -22,8 +22,8 @@ from .wizard import run_wizard
 
 console = Console()
 
-# プロファイルディレクトリのデフォルトパス
-DEFAULT_PROFILES_DIR = Path("profiles")
+# プロファイルディレクトリのデフォルトパス（プロジェクトルート基準）
+DEFAULT_PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles"
 
 
 def _run() -> None:
