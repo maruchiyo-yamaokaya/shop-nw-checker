@@ -12,6 +12,11 @@
 curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.sh | bash
 ```
 
+セットアップ完了後、以下でツールを起動してください:
+```bash
+uv run --project shop-nw-checker store-net-test
+```
+
 ### Windows
 
 #### 1. 事前準備（初回のみ）

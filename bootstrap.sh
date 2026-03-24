@@ -141,9 +141,11 @@ fi
 popd > /dev/null
 ok "環境構築完了"
 
-# ---------- 6. ツール起動 (Req 1.4) ----------
+# ---------- 6. ツール起動案内 (Req 1.4) ----------
 echo ""
-ok "セットアップ完了！ツールを起動します..."
+ok "セットアップ完了！"
 echo ""
-cd "$TARGET_DIR"
-uv run store-net-test
+info "以下のコマンドでツールを起動してください:"
+echo ""
+echo "    uv run --project $TARGET_DIR store-net-test"
+echo ""

@@ -93,5 +93,4 @@ Write-Ok "Dependencies installed"
 Write-Host ""
 Write-Ok "Setup complete! Starting tool..."
 Write-Host ""
-Set-Location $TARGET_DIR
-uv run store-net-test
+uv run --project $TARGET_DIR store-net-test
