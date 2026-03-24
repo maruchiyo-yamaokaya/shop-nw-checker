@@ -6,16 +6,21 @@
 
 ### macOS / Linux
 
+#### 初回セットアップ
+
 ターミナルで以下を実行してください:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.sh | bash
 ```
 
-セットアップ完了後、以下でツールを起動してください:
+#### ツール起動（初回・2回目以降共通）
+
 ```bash
 uv run --project shop-nw-checker store-net-test
 ```
+
+> 起動時にリポジトリの更新も自動で行われます。
 
 ### Windows
 
@@ -52,7 +57,8 @@ $f="$env:TEMP\bs.ps1"; irm "https://raw.githubusercontent.com/maruchiyo-yamaokay
 
 ## 2回目以降の実行
 
-同じコマンドを再実行すると、リポジトリを最新に更新してからツールを自動起動します。
+- **macOS / Linux**: `uv run --project shop-nw-checker store-net-test` を実行してください
+- **Windows**: 同じブートストラップコマンドを再実行してください（リポジトリ更新 → ツール自動起動）
 
 ## 前提条件
 
