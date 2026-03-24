@@ -11,8 +11,33 @@
   ],
   "stability": {
     "target_host": "8.8.8.8",
-    "duration_seconds": 30,
+    "duration_seconds": 5,
+    "ping_interval": 0.2,
     "max_packet_loss_percent": 5.0,
     "max_jitter_ms": 50.0
+  },
+  "vlan_tests": {
+    "https_urls": [
+      "https://www.google.com",
+      "https://www.cloudflare.com",
+      "https://www.amazon.co.jp"
+    ],
+    "store_gateway_dns_targets": [
+      { "hostname": "api.yamaokaya.net", "expect": "private_ip" },
+      { "hostname": "nx.yamaokaya.net", "expect": "private_ip" },
+      { "hostname": "pornhub.com", "expect": "nxdomain" },
+      { "hostname": "yamaokaya.lightning.force.com", "expect": "resolve_success" }
+    ],
+    "store_printer_host": "prn.myshop.yamaokaya.net",
+    "store_whereami_url": "https://api.yamaokaya.net/wb/whereami",
+    "pos_devices": [
+      { "name": "券売機1", "ip": "192.168.1.81" },
+      { "name": "券売機2", "ip": "192.168.1.82" },
+      { "name": "券売機3", "ip": "192.168.1.83" },
+      { "name": "DL", "ip": "192.168.1.110" }
+    ],
+    "public_dns_negative_targets": [
+      "nx.yamaokaya.net"
+    ]
   }
 }

@@ -10,7 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from store_net_test.models import PingTarget, StabilityConfig, TestProfile
+from store_net_test.models import (
+    GatewayDnsTarget,
+    PingTarget,
+    PosDevice,
+    StabilityConfig,
+    TestProfile,
+    VlanTestConfig,
+)
 from store_net_test.profile import (
     load_profiles,
     parse_profile,
@@ -57,6 +64,34 @@ def _make_profile_dict(**overrides) -> dict:
     return defaults
 
 
+def _make_vlan_test_config() -> VlanTestConfig:
+    """テスト用のVlanTestConfigを生成する"""
+    return VlanTestConfig(
+        https_urls=["https://www.google.com"],
+        store_gateway_dns_targets=[
+            GatewayDnsTarget(hostname="api.yamaokaya.net", expect="private_ip"),
+        ],
+        store_printer_host="prn.myshop.yamaokaya.net",
+        store_whereami_url="https://api.yamaokaya.net/wb/whereami",
+        pos_devices=[PosDevice(name="券売機1", ip="192.168.1.81")],
+        public_dns_negative_targets=["nx.yamaokaya.net"],
+    )
+
+
+def _make_vlan_tests_dict() -> dict:
+    """テスト用のvlan_tests辞書を生成する"""
+    return {
+        "https_urls": ["https://www.google.com"],
+        "store_gateway_dns_targets": [
+            {"hostname": "api.yamaokaya.net", "expect": "private_ip"},
+        ],
+        "store_printer_host": "prn.myshop.yamaokaya.net",
+        "store_whereami_url": "https://api.yamaokaya.net/wb/whereami",
+        "pos_devices": [{"name": "券売機1", "ip": "192.168.1.81"}],
+        "public_dns_negative_targets": ["nx.yamaokaya.net"],
+    }
+
+
 # --- parse_profile テスト ---
 
 class TestParseProfile:
@@ -94,6 +129,43 @@ class TestParseProfile:
         with pytest.raises(KeyError):
             parse_profile(data)
 
+    def test_vlan_testsなしの辞書はvlan_testsがNone(self):
+        """vlan_testsキーがない場合、後方互換性を維持してNoneになる"""
+        data = _make_profile_dict()
+        profile = parse_profile(data)
+        assert profile.vlan_tests is None
+
+    def test_ping_interval未指定時にデフォルト0_2が設定される(self):
+        """ping_intervalキーがない場合、デフォルト値0.2が使用される"""
+        data = _make_profile_dict()
+        # stability辞書にping_intervalキーがないことを確認
+        assert "ping_interval" not in data["stability"]
+        profile = parse_profile(data)
+        assert profile.stability.ping_interval == 0.2
+
+    def test_ping_interval指定時に値が正しく読み込まれる(self):
+        """ping_intervalキーが存在する場合、指定値が使用される"""
+        data = _make_profile_dict()
+        data["stability"]["ping_interval"] = 0.5
+        profile = parse_profile(data)
+        assert profile.stability.ping_interval == 0.5
+
+    def test_vlan_testsありの辞書からVlanTestConfigをパースできる(self):
+        """vlan_testsキーが存在する場合、ネストされたオブジェクトを正しくパースする"""
+        data = _make_profile_dict(vlan_tests=_make_vlan_tests_dict())
+        profile = parse_profile(data)
+        assert profile.vlan_tests is not None
+        assert profile.vlan_tests.https_urls == ["https://www.google.com"]
+        assert len(profile.vlan_tests.store_gateway_dns_targets) == 1
+        assert profile.vlan_tests.store_gateway_dns_targets[0].hostname == "api.yamaokaya.net"
+        assert profile.vlan_tests.store_gateway_dns_targets[0].expect == "private_ip"
+        assert profile.vlan_tests.store_printer_host == "prn.myshop.yamaokaya.net"
+        assert profile.vlan_tests.store_whereami_url == "https://api.yamaokaya.net/wb/whereami"
+        assert len(profile.vlan_tests.pos_devices) == 1
+        assert profile.vlan_tests.pos_devices[0].name == "券売機1"
+        assert profile.vlan_tests.pos_devices[0].ip == "192.168.1.81"
+        assert profile.vlan_tests.public_dns_negative_targets == ["nx.yamaokaya.net"]
+
 
 # --- profile_to_dict テスト ---
 
@@ -112,6 +184,49 @@ class TestProfileToDict:
         """Property 1: profile_to_dict → parse_profile のラウンドトリップ"""
         original = _make_profile()
         roundtripped = parse_profile(profile_to_dict(original))
+        assert roundtripped == original
+
+    def test_vlan_testsがNoneの場合は辞書に含まれない(self):
+        """vlan_testsがNoneの場合、出力辞書にvlan_testsキーが含まれない"""
+        profile = _make_profile()
+        result = profile_to_dict(profile)
+        assert "vlan_tests" not in result
+
+    def test_vlan_testsが非Noneの場合は辞書に含まれる(self):
+        """vlan_testsが設定されている場合、ネストされたオブジェクトが正しく直列化される"""
+        profile = _make_profile(vlan_tests=_make_vlan_test_config())
+        result = profile_to_dict(profile)
+        assert "vlan_tests" in result
+        vt = result["vlan_tests"]
+        assert vt["https_urls"] == ["https://www.google.com"]
+        assert vt["store_gateway_dns_targets"] == [
+            {"hostname": "api.yamaokaya.net", "expect": "private_ip"},
+        ]
+        assert vt["store_printer_host"] == "prn.myshop.yamaokaya.net"
+        assert vt["pos_devices"] == [{"name": "券売機1", "ip": "192.168.1.81"}]
+
+    def test_vlan_tests付きラウンドトリップで等価(self):
+        """vlan_testsを含むプロファイルのラウンドトリップが等価であること"""
+        original = _make_profile(vlan_tests=_make_vlan_test_config())
+        roundtripped = parse_profile(profile_to_dict(original))
+        assert roundtripped == original
+
+    def test_ping_interval付きラウンドトリップで保持される(self):
+        """ping_intervalを含むプロファイルのラウンドトリップでping_intervalが保持されること"""
+        original = _make_profile(
+            stability=StabilityConfig(
+                target_host="8.8.8.8",
+                duration_seconds=5,
+                max_packet_loss_percent=5.0,
+                max_jitter_ms=50.0,
+                ping_interval=0.5,
+            )
+        )
+        d = profile_to_dict(original)
+        # 辞書にping_intervalが含まれていること
+        assert d["stability"]["ping_interval"] == 0.5
+        roundtripped = parse_profile(d)
+        assert roundtripped.stability.ping_interval == 0.5
         assert roundtripped == original
 
 
@@ -197,6 +312,90 @@ class TestValidateProfile:
         errors = validate_profile(profile)
         assert len(errors) >= 3
 
+    # --- VLAN固有テストバリデーション ---
+
+    def test_vlan_testsがNoneの場合はバリデーションスキップ(self):
+        """vlan_testsがNoneの場合、VLAN関連のエラーが出ないこと"""
+        profile = _make_profile(vlan_tests=None)
+        errors = validate_profile(profile)
+        assert errors == []
+
+    def test_ping_intervalが0以下はエラー(self):
+        """ping_intervalが0の場合にバリデーションエラーになること"""
+        profile = _make_profile(
+            stability=StabilityConfig(
+                target_host="8.8.8.8",
+                duration_seconds=30,
+                max_packet_loss_percent=5.0,
+                max_jitter_ms=50.0,
+                ping_interval=0,
+            )
+        )
+        errors = validate_profile(profile)
+        assert any("ping_interval" in e for e in errors)
+
+    def test_ping_intervalが負の値はエラー(self):
+        """ping_intervalが負の値の場合にバリデーションエラーになること"""
+        profile = _make_profile(
+            stability=StabilityConfig(
+                target_host="8.8.8.8",
+                duration_seconds=30,
+                max_packet_loss_percent=5.0,
+                max_jitter_ms=50.0,
+                ping_interval=-0.1,
+            )
+        )
+        errors = validate_profile(profile)
+        assert any("ping_interval" in e for e in errors)
+
+    def test_有効なvlan_testsはエラーなし(self):
+        """全フィールドが有効なvlan_testsはバリデーションエラーなし"""
+        profile = _make_profile(vlan_tests=_make_vlan_test_config())
+        errors = validate_profile(profile)
+        assert errors == []
+
+    def test_vlan_testsのhttps_urlsが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.https_urls = []
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.https_urls" in e for e in errors)
+
+    def test_vlan_testsのstore_printer_hostが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.store_printer_host = ""
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.store_printer_host" in e for e in errors)
+
+    def test_vlan_testsのstore_whereami_urlが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.store_whereami_url = ""
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.store_whereami_url" in e for e in errors)
+
+    def test_vlan_testsのpos_devicesが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.pos_devices = []
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.pos_devices" in e for e in errors)
+
+    def test_vlan_testsのpublic_dns_negative_targetsが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.public_dns_negative_targets = []
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.public_dns_negative_targets" in e for e in errors)
+
+    def test_vlan_testsのstore_gateway_dns_targetsが空はエラー(self):
+        vt = _make_vlan_test_config()
+        vt.store_gateway_dns_targets = []
+        profile = _make_profile(vlan_tests=vt)
+        errors = validate_profile(profile)
+        assert any("vlan_tests.store_gateway_dns_targets" in e for e in errors)
+
 
 # --- load_profiles テスト ---
 
@@ -245,8 +444,20 @@ class TestLoadProfiles:
             load_profiles(tmp_path)
 
     def test_実際のデフォルトプロファイルを読み込める(self):
-        """profiles/default.jsonが正しく読み込めることを確認"""
+        """profiles/default.jsonが正しく読み込めることを確認（vlan_tests含む）"""
         profiles_dir = Path(__file__).parent.parent / "profiles"
         profiles = load_profiles(profiles_dir)
         assert len(profiles) >= 1
-        assert any(p.name == "standard" for p in profiles)
+        default = next(p for p in profiles if p.name == "standard")
+        assert default is not None
+        # 安定性テスト設定が高速化対応していること
+        assert default.stability.duration_seconds == 5
+        assert default.stability.ping_interval == 0.2
+        # default.jsonにはvlan_testsが含まれていること
+        assert default.vlan_tests is not None
+        assert len(default.vlan_tests.https_urls) >= 1
+        assert len(default.vlan_tests.store_gateway_dns_targets) >= 1
+        assert default.vlan_tests.store_printer_host != ""
+        assert default.vlan_tests.store_whereami_url != ""
+        assert len(default.vlan_tests.pos_devices) >= 1
+        assert len(default.vlan_tests.public_dns_negative_targets) >= 1

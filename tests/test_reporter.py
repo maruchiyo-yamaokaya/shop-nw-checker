@@ -141,12 +141,14 @@ class TestSaveResultsToJson:
         filepath = save_results_to_json(suite, tmp_path)
         data = json.loads(filepath.read_text(encoding="utf-8"))
         assert data["store_code"] == "0001"
+        assert data["vlan_type"] == "店舗"
         assert len(data["results"]) == 2
 
-    def test_ファイル名に店舗コードとWAN経路が含まれる(self, tmp_path: Path):
+    def test_ファイル名に店舗コードとVLAN種別とWAN経路が含まれる(self, tmp_path: Path):
         suite = _make_suite_result()
         filepath = save_results_to_json(suite, tmp_path)
         assert "0001" in filepath.name
+        assert "店舗" in filepath.name
         assert "ftth" in filepath.name
 
     def test_出力ディレクトリが自動作成される(self, tmp_path: Path):
@@ -383,3 +385,50 @@ class TestSubmitResults:
             # ローカルJSONは保存されない
             json_files = list(tmp_path.glob("*.json"))
             assert len(json_files) == 0
+
+
+# --- local_ip直列化テスト ---
+
+
+class TestSuiteResultToDictLocalIp:
+    """suite_result_to_dict: local_ipフィールドの直列化 (Req 2.3)"""
+
+    def test_local_ipが辞書に含まれる(self):
+        """local_ipが設定されている場合、出力辞書にlocal_ipキーが含まれる"""
+        suite = _make_suite_result(local_ip="192.168.1.100")
+        result = suite_result_to_dict(suite)
+        assert "local_ip" in result
+        assert result["local_ip"] == "192.168.1.100"
+
+    def test_local_ipがNoneの場合にnullとして出力される(self):
+        """local_ip=Noneの場合、出力辞書にlocal_ip=Noneが含まれる"""
+        suite = _make_suite_result(local_ip=None)
+        result = suite_result_to_dict(suite)
+        assert "local_ip" in result
+        assert result["local_ip"] is None
+
+    def test_local_ipがNoneの場合にJSON直列化でnullになる(self):
+        """local_ip=Noneの場合、JSON直列化でnullとして出力される"""
+        suite = _make_suite_result(local_ip=None)
+        result = suite_result_to_dict(suite)
+        json_str = json.dumps(result, ensure_ascii=False)
+        parsed = json.loads(json_str)
+        assert parsed["local_ip"] is None
+
+
+class TestBuildAirtableRecordLocalIp:
+    """build_airtable_record: local_ipフィールドの直列化 (Req 2.4)"""
+
+    def test_local_ipがレコードに含まれる(self):
+        """local_ipが設定されている場合、Webhookペイロードにlocal_ipキーが含まれる"""
+        suite = _make_suite_result(local_ip="10.0.0.5")
+        record = build_airtable_record(suite)
+        assert "local_ip" in record
+        assert record["local_ip"] == "10.0.0.5"
+
+    def test_local_ipがNoneの場合にnullとして出力される(self):
+        """local_ip=Noneの場合、Webhookペイロードにlocal_ip=Noneが含まれる"""
+        suite = _make_suite_result(local_ip=None)
+        record = build_airtable_record(suite)
+        assert "local_ip" in record
+        assert record["local_ip"] is None

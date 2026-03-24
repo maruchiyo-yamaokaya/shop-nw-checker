@@ -26,12 +26,12 @@ def run_stability_test(config: StabilityConfig, wan_path: WANPath) -> TestResult
         安定性テストのTestResult
     """
     try:
-        # 1秒間隔でpingを送信（duration_seconds回）
-        count = max(config.duration_seconds, 2)
+        # ping_intervalに基づきパケット数を算出（最低2パケット）
+        count = max(int(config.duration_seconds / config.ping_interval), 2)
         host = ping(
             config.target_host,
             count=count,
-            interval=1.0,
+            interval=config.ping_interval,
             timeout=2.0,
             privileged=False,
         )

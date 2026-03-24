@@ -1,7 +1,7 @@
 """コアデータモデル定義
 
 Enum・dataclassによるデータ構造を提供する。
-Requirements: 3.3, 3.6, 7.1
+Requirements: 3.3, 3.6, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ class TestStatus(Enum):
 class WizardInput:
     """Setup Wizardの入力結果"""
     store_code: str
-    vlan_type: str
     wan_path: WANPath
 
 
@@ -47,6 +46,32 @@ class StabilityConfig:
     duration_seconds: int
     max_packet_loss_percent: float
     max_jitter_ms: float
+    ping_interval: float = 0.2  # ping送信間隔（秒）。後方互換性のためデフォルト0.2
+
+
+@dataclass
+class GatewayDnsTarget:
+    """ゲートウェイDNSテスト対象"""
+    hostname: str
+    expect: str  # "private_ip" | "nxdomain" | "resolve_success"
+
+
+@dataclass
+class PosDevice:
+    """POS VLANローカル機材"""
+    name: str
+    ip: str
+
+
+@dataclass
+class VlanTestConfig:
+    """VLAN種別固有テスト設定"""
+    https_urls: list[str]
+    store_gateway_dns_targets: list[GatewayDnsTarget]
+    store_printer_host: str
+    store_whereami_url: str
+    pos_devices: list[PosDevice]
+    public_dns_negative_targets: list[str]
 
 
 @dataclass
@@ -57,6 +82,7 @@ class TestProfile:
     ping_targets: list[PingTarget]
     dns_targets: list[str]
     stability: StabilityConfig
+    vlan_tests: VlanTestConfig | None = None  # 後方互換性のためOptional
 
 
 @dataclass
@@ -79,6 +105,7 @@ class SuiteResult:
     profile_name: str
     results: list[TestResult]
     execution_timestamp: datetime
+    local_ip: str | None = None  # VLAN NICのローカルIPアドレス。後方互換性のためデフォルトNone
 
     @property
     def overall_status(self) -> TestStatus:

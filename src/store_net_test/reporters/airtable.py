@@ -105,6 +105,7 @@ def build_airtable_record(suite_result: SuiteResult) -> dict:
         "passed_count": summary.get(TestStatus.PASS, 0),
         "failed_count": summary.get(TestStatus.FAIL, 0),
         "warning_count": summary.get(TestStatus.WARNING, 0),
+        "local_ip": suite_result.local_ip,
     }
 
 

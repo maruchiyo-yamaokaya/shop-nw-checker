@@ -39,6 +39,7 @@ def suite_result_to_dict(suite_result: SuiteResult) -> dict:
         "store_code": suite_result.store_code,
         "vlan_type": suite_result.vlan_type,
         "wan_path": suite_result.wan_path.value,
+        "local_ip": suite_result.local_ip,
         "profile_name": suite_result.profile_name,
         "execution_timestamp": suite_result.execution_timestamp.isoformat(),
         "overall_status": suite_result.overall_status.value,
@@ -49,7 +50,7 @@ def suite_result_to_dict(suite_result: SuiteResult) -> dict:
 def save_results_to_json(suite_result: SuiteResult, output_dir: Path) -> Path:
     """結果をローカルJSONファイルに保存する
 
-    ファイル名は「{日付}_{店舗コード}_{WAN経路}.json」形式。
+    ファイル名は「{日付}_{店舗コード}_{VLAN種別}_{WAN経路}.json」形式。
 
     Args:
         suite_result: テストスイート結果
@@ -61,7 +62,7 @@ def save_results_to_json(suite_result: SuiteResult, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp_str = suite_result.execution_timestamp.strftime("%Y-%m-%d_%H%M%S")
-    filename = f"{timestamp_str}_{suite_result.store_code}_{suite_result.wan_path.value}.json"
+    filename = f"{timestamp_str}_{suite_result.store_code}_{suite_result.vlan_type}_{suite_result.wan_path.value}.json"
     filepath = output_dir / filename
 
     data = suite_result_to_dict(suite_result)
