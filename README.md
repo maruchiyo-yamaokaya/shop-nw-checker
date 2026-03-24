@@ -14,20 +14,33 @@ curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker
 
 ### Windows
 
-PowerShellで以下を実行してください:
+#### 1. 事前準備（初回のみ）
+
+git と uv を先にインストールしてください:
 
 ```powershell
-irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 | iex
+# git のインストール
+winget install --id Git.Git -e --source winget
+
+# uv のインストール
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+インストール後、PowerShellを再起動してください。
+
+#### 2. ブートストラップ実行
+
+```powershell
+$f="$env:TEMP\bootstrap.ps1"; irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
 ```
 
 ブートストラップスクリプトが以下を自動で行います:
 
 1. インターネット接続確認
-2. git の確認・インストール（未導入時）
-3. uv（Pythonパッケージマネージャ）のインストール
-4. リポジトリのクローン
-5. 依存パッケージのインストール
-6. ツールの起動
+2. git / uv の存在確認
+3. リポジトリのクローン（または更新）
+4. 依存パッケージのインストール
+5. ツールの起動案内
 
 ## 2回目以降の実行
 
@@ -36,7 +49,9 @@ irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/b
 ## 前提条件
 
 - インターネット接続（必須）
-- git（未導入の場合、スクリプトが自動インストールを試みます）
+- git
+- macOS / Linux: 未導入の場合、スクリプトが自動インストールを試みます
+- Windows: 事前にインストールが必要です（上記手順参照）
 
 > **Note**: Python のインストールは不要です。uv が自動でPython環境を構築します。
 
