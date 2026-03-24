@@ -96,11 +96,14 @@ echo [OK]    リポジトリ準備完了
 
 REM ---------- 5. 仮想環境構築 + 依存インストール (Req 1.2, 1.3) ----------
 echo [INFO]  依存パッケージをインストール中...
-uv sync --project "%TARGET_DIR%"
+pushd "%TARGET_DIR%"
+uv sync
 if errorlevel 1 (
     echo [ERROR] 依存パッケージのインストールに失敗しました。
+    popd
     exit /b 1
 )
+popd
 echo [OK]    環境構築完了
 
 REM ---------- 6. ツール起動案内 (Req 1.4) ----------

@@ -131,10 +131,14 @@ ok "リポジトリ準備完了"
 
 # ---------- 5. 仮想環境構築 + 依存インストール (Req 1.2, 1.3) ----------
 info "依存パッケージをインストール中..."
-if ! uv sync --project "$TARGET_DIR"; then
+# プロジェクトディレクトリ内で uv sync を実行し、パッケージ自体もインストールする
+pushd "$TARGET_DIR" > /dev/null
+if ! uv sync; then
     err "依存パッケージのインストールに失敗しました。"
+    popd > /dev/null
     exit 1
 fi
+popd > /dev/null
 ok "環境構築完了"
 
 # ---------- 6. ツール起動案内 (Req 1.4) ----------
