@@ -16,21 +16,24 @@ curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker
 
 #### 1. 事前準備（初回のみ）
 
-git と uv を先にインストールしてください:
+PowerShellを開いて、以下を1行ずつコピペして実行してください。
 
-```powershell
-# git のインストール
+**① git のインストール:**
+```
 winget install --id Git.Git -e --source winget
+```
 
-# uv のインストール
+**② uv のインストール:**
+```
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-インストール後、PowerShellを再起動してください。
+**③ PowerShellを閉じて、再度開いてください。**
 
 #### 2. ブートストラップ実行
 
-```powershell
+以下をコピペして実行してください:
+```
 $f="$env:TEMP\bootstrap.ps1"; irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
 ```
 
