@@ -1,0 +1,18 @@
+{
+  "name": "standard",
+  "description": "標準店舗テストプロファイル",
+  "ping_targets": [
+    { "host": "8.8.8.8", "timeout_ms": 1000 },
+    { "host": "1.1.1.1", "timeout_ms": 1000 }
+  ],
+  "dns_targets": [
+    "www.google.com",
+    "dns.google"
+  ],
+  "stability": {
+    "target_host": "8.8.8.8",
+    "duration_seconds": 30,
+    "max_packet_loss_percent": 5.0,
+    "max_jitter_ms": 50.0
+  }
+}

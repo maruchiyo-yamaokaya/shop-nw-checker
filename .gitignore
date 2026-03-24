@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# 仮想環境
+.venv/
+
+# pytest
+.pytest_cache/
+
+# 環境変数・認証情報
+# 注意: .env はWebhook URL格納用にコミット対象とする（プライベートリポジトリ前提）
+.env.*
+config.local.json
+
+# カスタムプロファイル（社内NW情報を含む可能性）
+profiles/*.json
+!profiles/default.json
+
+# テスト結果（店舗情報を含む）
+results/
+
+# OS
+.DS_Store
+Thumbs.db
