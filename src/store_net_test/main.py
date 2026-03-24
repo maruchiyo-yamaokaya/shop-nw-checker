@@ -8,10 +8,21 @@ Requirements: 8.1, 8.2, 8.3
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
 from rich.console import Console
+
+
+def _ensure_tty_stdin() -> None:
+    """stdinがターミナルでない場合（curl|bash等）、/dev/ttyに差し替える"""
+    if not sys.stdin.isatty():
+        try:
+            tty_fd = os.open("/dev/tty", os.O_RDONLY)
+            sys.stdin = open(tty_fd, "r", closefd=True)
+        except OSError:
+            pass  # /dev/tty が使えない環境ではそのまま続行
 
 from .profile import load_profiles
 from .reporters.airtable import load_webhook_config, submit_results
@@ -28,6 +39,9 @@ DEFAULT_PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles
 
 def _run() -> None:
     """メインフローを実行する（同期部分）"""
+    # curl|bash 経由実行時のターミナル入力対応
+    _ensure_tty_stdin()
+
     # OS判定 (Req 9.7)
     check_platform_or_exit()
 
