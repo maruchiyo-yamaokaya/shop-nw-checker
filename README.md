@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker
 PowerShellで以下を実行してください:
 
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.bat" -OutFile "bootstrap.bat"; .\bootstrap.bat
+irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 | iex
 ```
 
 ブートストラップスクリプトが以下を自動で行います:
