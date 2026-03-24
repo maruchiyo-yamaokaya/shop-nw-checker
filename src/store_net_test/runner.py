@@ -1,7 +1,7 @@
 """テストスイート実行エンジン
 
 プロファイルに基づきDNS・Ping・安定性テストを順次実行する。
-WAN経路が複数の場合、FTTH → LTEの順で実行する。
+単一のWAN経路でテストスイートを実行する。
 テスト項目のシステムエラー時はスキップして次に進む。
 Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
 """
@@ -18,7 +18,6 @@ from .models import (
     TestProfile,
     TestResult,
     TestStatus,
-    WANPath,
     WizardInput,
 )
 from .tests.dns import run_dns_test
@@ -83,9 +82,8 @@ def _run_tests_for_wan_path(
         console.print(f"  [red]⚠ 安定性テストでエラー: {e}[/red]")
 
     return SuiteResult(
-        store_name=wizard_input.store_name,
-        nw_area=wizard_input.nw_area,
-        vlan=wizard_input.vlan,
+        store_code=wizard_input.store_code,
+        vlan_type=wizard_input.vlan_type,
         wan_path=wan_path,
         profile_name=profile.name,
         results=results,
@@ -108,91 +106,78 @@ def _print_test_status(results: list[TestResult]) -> None:
 def run_test_suite(
     profile: TestProfile,
     wizard_input: WizardInput,
-) -> list[SuiteResult]:
+) -> SuiteResult:
     """テストスイートを実行する
 
-    WAN経路が複数の場合、FTTH → LTEの順で実行する（Req 3.2）。
+    単一のWAN経路でテストスイートを実行する。
 
     Args:
         profile: テストプロファイル
         wizard_input: ウィザード入力結果
 
     Returns:
-        WAN経路別のSuiteResultリスト
+        SuiteResult
     """
-    suite_results: list[SuiteResult] = []
-
-    # FTTH → LTEの順序を保証 (Req 3.2)
-    wan_paths = sorted(
-        wizard_input.wan_paths,
-        key=lambda wp: 0 if wp == WANPath.FTTH else 1,
+    console.print()
+    console.print(
+        f"[bold blue]━━━ WAN経路: {wizard_input.wan_path.value.upper()} ━━━[/bold blue]"
     )
 
-    total_paths = len(wan_paths)
-    for idx, wan_path in enumerate(wan_paths, 1):
-        console.print()
-        console.print(
-            f"[bold blue]━━━ WAN経路: {wan_path.value.upper()} "
-            f"({idx}/{total_paths}) ━━━[/bold blue]"
-        )
-
-        result = _run_tests_for_wan_path(profile, wan_path, wizard_input)
-        suite_results.append(result)
-
-    return suite_results
+    return _run_tests_for_wan_path(profile, wizard_input.wan_path, wizard_input)
 
 
-def display_summary(suite_results: list[SuiteResult]) -> None:
+def display_summary(suite_result: SuiteResult) -> None:
     """結果サマリーをコンソールに表示する (Req 3.6)
 
     Args:
-        suite_results: WAN経路別のテストスイート結果リスト
+        suite_result: テストスイート結果
     """
     console.print()
     console.print("[bold]━━━ テスト結果サマリー ━━━[/bold]")
     console.print()
 
-    for sr in suite_results:
-        # 総合ステータスの色分け
-        status_style = {
-            TestStatus.PASS: "bold green",
-            TestStatus.FAIL: "bold red",
-            TestStatus.WARNING: "bold yellow",
-        }.get(sr.overall_status, "bold white")
+    sr = suite_result
 
-        console.print(
-            f"[{status_style}]【{sr.wan_path.value.upper()}】"
-            f" 総合: {sr.overall_status.value.upper()}[/{status_style}]"
-        )
+    # 総合ステータスの色分け
+    status_style = {
+        TestStatus.PASS: "bold green",
+        TestStatus.FAIL: "bold red",
+        TestStatus.WARNING: "bold yellow",
+    }.get(sr.overall_status, "bold white")
 
-        # ステータス別カウント
-        summary = sr.summary
-        parts = []
-        for status in [TestStatus.PASS, TestStatus.FAIL, TestStatus.WARNING, TestStatus.ERROR]:
-            count = summary.get(status, 0)
-            if count > 0:
-                parts.append(f"{status.value}: {count}")
-        console.print(f"  {' / '.join(parts)}")
+    console.print(
+        f"[{status_style}]【{sr.wan_path.value.upper()}】"
+        f" 総合: {sr.overall_status.value.upper()}[/{status_style}]"
+    )
 
-        # 個別結果テーブル
-        table = Table(show_header=True, box=None, padding=(0, 1))
-        table.add_column("テスト名", style="cyan")
-        table.add_column("ステータス")
-        table.add_column("詳細")
+    # ステータス別カウント
+    summary = sr.summary
+    parts = []
+    for status in [TestStatus.PASS, TestStatus.FAIL, TestStatus.WARNING, TestStatus.ERROR]:
+        count = summary.get(status, 0)
+        if count > 0:
+            parts.append(f"{status.value}: {count}")
+    console.print(f"  {' / '.join(parts)}")
 
-        for r in sr.results:
-            status_text = {
-                TestStatus.PASS: "[green]PASS[/green]",
-                TestStatus.FAIL: "[red]FAIL[/red]",
-                TestStatus.WARNING: "[yellow]WARN[/yellow]",
-                TestStatus.ERROR: "[red]ERROR[/red]",
-            }.get(r.status, r.status.value)
+    # 個別結果テーブル
+    table = Table(show_header=True, box=None, padding=(0, 1))
+    table.add_column("テスト名", style="cyan")
+    table.add_column("ステータス")
+    table.add_column("詳細")
 
-            detail = r.error_message or _format_details(r.details)
-            table.add_row(r.test_name, status_text, detail)
+    for r in sr.results:
+        status_text = {
+            TestStatus.PASS: "[green]PASS[/green]",
+            TestStatus.FAIL: "[red]FAIL[/red]",
+            TestStatus.WARNING: "[yellow]WARN[/yellow]",
+            TestStatus.ERROR: "[red]ERROR[/red]",
+        }.get(r.status, r.status.value)
 
-        console.print(table)
-        console.print()
+        detail = r.error_message or _format_details(r.details)
+        table.add_row(r.test_name, status_text, detail)
+
+    console.print(table)
+    console.print()
 
 
 def _format_details(details: dict) -> str:

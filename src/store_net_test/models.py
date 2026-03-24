@@ -28,11 +28,9 @@ class TestStatus(Enum):
 @dataclass
 class WizardInput:
     """Setup Wizardの入力結果"""
-    store_name: str
-    nw_area: str
-    vlan: str
-    wan_paths: list[WANPath]
-    test_profile: str
+    store_code: str
+    vlan_type: str
+    wan_path: WANPath
 
 
 @dataclass
@@ -75,9 +73,8 @@ class TestResult:
 @dataclass
 class SuiteResult:
     """テストスイート全体の結果"""
-    store_name: str
-    nw_area: str
-    vlan: str
+    store_code: str
+    vlan_type: str
     wan_path: WANPath
     profile_name: str
     results: list[TestResult]

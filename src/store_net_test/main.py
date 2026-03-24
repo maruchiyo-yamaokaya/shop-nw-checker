@@ -53,37 +53,29 @@ def _run() -> None:
         console.print(f"[bold red]❌ プロファイル読み込みエラー: {e}[/bold red]")
         sys.exit(1)
 
-    # Setup Wizard (Req 2.1〜2.10)
+    # Setup Wizard (Req 1.1〜1.5, 2.1〜2.3, 6.1〜6.4)
     try:
-        wizard_input = run_wizard(available_profiles=profiles)
+        wizard_input = run_wizard()
     except KeyboardInterrupt:
         console.print("\n[yellow]中断されました。[/yellow]")
         sys.exit(0)
 
-    # 選択されたプロファイルを取得
-    selected_profile = next(
-        (p for p in profiles if p.name == wizard_input.test_profile),
-        None,
-    )
-    if selected_profile is None:
-        console.print(
-            f"[bold red]❌ プロファイル '{wizard_input.test_profile}' が見つかりません。[/bold red]"
-        )
-        sys.exit(1)
+    # テストプロファイルは最初に読み込まれたプロファイルを自動使用 (Req 3.5)
+    selected_profile = profiles[0]
 
     # テストスイート実行 (Req 3.1〜3.6)
-    suite_results = run_test_suite(selected_profile, wizard_input)
+    suite_result = run_test_suite(selected_profile, wizard_input)
 
     # 結果サマリー表示 (Req 3.6)
-    display_summary(suite_results)
+    display_summary(suite_result)
 
     # Airtable投入 (Req 6.1〜6.7)
     webhook_config = load_webhook_config()
     if webhook_config is not None:
         console.print("Airtableに結果を投入中...")
-        success_count = asyncio.run(submit_results(webhook_config, suite_results))
+        success_count = asyncio.run(submit_results(webhook_config, suite_result))
         console.print(
-            f"[green]✓ {success_count}/{len(suite_results)} 件の結果を投入しました。[/green]"
+            f"[green]✓ {success_count}/1 件の結果を投入しました。[/green]"
         )
     else:
         console.print(

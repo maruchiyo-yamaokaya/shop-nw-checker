@@ -52,9 +52,8 @@ def _make_test_result(**overrides) -> TestResult:
 def _make_suite_result(**overrides) -> SuiteResult:
     """テスト用SuiteResultを生成する"""
     defaults = {
-        "store_name": "渋谷店",
-        "nw_area": "バックヤード",
-        "vlan": "VLAN100",
+        "store_code": "0001",
+        "vlan_type": "店舗",
         "wan_path": WANPath.FTTH,
         "profile_name": "standard",
         "results": [
@@ -75,9 +74,8 @@ class TestSuiteResultToDict:
     def test_全フィールドが辞書に含まれる(self):
         suite = _make_suite_result()
         result = suite_result_to_dict(suite)
-        assert result["store_name"] == "渋谷店"
-        assert result["nw_area"] == "バックヤード"
-        assert result["vlan"] == "VLAN100"
+        assert result["store_code"] == "0001"
+        assert result["vlan_type"] == "店舗"
         assert result["wan_path"] == "ftth"
         assert result["profile_name"] == "standard"
         assert result["overall_status"] == "pass"
@@ -142,13 +140,13 @@ class TestSaveResultsToJson:
         suite = _make_suite_result()
         filepath = save_results_to_json(suite, tmp_path)
         data = json.loads(filepath.read_text(encoding="utf-8"))
-        assert data["store_name"] == "渋谷店"
+        assert data["store_code"] == "0001"
         assert len(data["results"]) == 2
 
-    def test_ファイル名に店舗名とWAN経路が含まれる(self, tmp_path: Path):
+    def test_ファイル名に店舗コードとWAN経路が含まれる(self, tmp_path: Path):
         suite = _make_suite_result()
         filepath = save_results_to_json(suite, tmp_path)
-        assert "渋谷店" in filepath.name
+        assert "0001" in filepath.name
         assert "ftth" in filepath.name
 
     def test_出力ディレクトリが自動作成される(self, tmp_path: Path):
@@ -162,8 +160,8 @@ class TestSaveResultsToJson:
         suite = _make_suite_result()
         filepath = save_results_to_json(suite, tmp_path)
         content = filepath.read_text(encoding="utf-8")
-        assert "渋谷店" in content
-        assert "バックヤード" in content
+        assert "0001" in content
+        assert "店舗" in content
 
 
 # --- Airtableレポーター テスト ---
@@ -236,10 +234,9 @@ class TestBuildAirtableRecord:
     def test_全必須フィールドが含まれる(self):
         suite = _make_suite_result()
         record = build_airtable_record(suite)
-        # Req 6.2: 全必須フィールドの存在確認
-        assert "store_name" in record
-        assert "nw_area" in record
-        assert "vlan" in record
+        # Req 9.1, 9.2, 9.3: 全必須フィールドの存在確認
+        assert "store_code" in record
+        assert "vlan_type" in record
         assert "wan_path" in record
         assert "execution_time" in record
         assert "profile" in record
@@ -248,13 +245,16 @@ class TestBuildAirtableRecord:
         assert "passed_count" in record
         assert "failed_count" in record
         assert "warning_count" in record
+        # 旧フィールドが含まれないこと
+        assert "store_name" not in record
+        assert "nw_area" not in record
+        assert "vlan" not in record
 
     def test_フィールド値が正しい(self):
         suite = _make_suite_result()
         record = build_airtable_record(suite)
-        assert record["store_name"] == "渋谷店"
-        assert record["nw_area"] == "バックヤード"
-        assert record["vlan"] == "VLAN100"
+        assert record["store_code"] == "0001"
+        assert record["vlan_type"] == "店舗"
         assert record["wan_path"] == "FTTH"
         assert record["profile"] == "standard"
         assert record["overall_status"] == "pass"
@@ -295,7 +295,7 @@ class TestSubmitResults:
 
     @pytest.mark.asyncio
     async def test_成功時にカウントが返る(self, tmp_path: Path):
-        """Req 6.1, 6.6: 成功時の投入"""
+        """成功時の投入"""
         config = WebhookConfig(webhook_url="https://hooks.airtable.com/test")
         suite = _make_suite_result()
 
@@ -310,35 +310,13 @@ class TestSubmitResults:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            count = await submit_results(config, [suite], fallback_dir=tmp_path)
+            count = await submit_results(config, suite, fallback_dir=tmp_path)
             assert count == 1
             mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_WAN経路別に個別リクエスト(self, tmp_path: Path):
-        """Req 6.3: WAN経路別レコード分離"""
-        config = WebhookConfig(webhook_url="https://hooks.airtable.com/test")
-        suite_ftth = _make_suite_result(wan_path=WANPath.FTTH)
-        suite_lte = _make_suite_result(wan_path=WANPath.LTE)
-
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = lambda: None
-
-        with patch("store_net_test.reporters.airtable.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.post.return_value = mock_response
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            count = await submit_results(config, [suite_ftth, suite_lte], fallback_dir=tmp_path)
-            assert count == 2
-            assert mock_client.post.call_count == 2
-
-    @pytest.mark.asyncio
     async def test_全リトライ失敗時にローカル保存(self, tmp_path: Path):
-        """Req 6.4, 6.5: リトライ失敗時のフォールバック"""
+        """リトライ失敗時のフォールバック"""
         config = WebhookConfig(webhook_url="https://hooks.airtable.com/test")
         suite = _make_suite_result()
 
@@ -351,7 +329,7 @@ class TestSubmitResults:
 
             # リトライ間のsleepをスキップ
             with patch("store_net_test.reporters.airtable.asyncio.sleep", new_callable=AsyncMock):
-                count = await submit_results(config, [suite], fallback_dir=tmp_path)
+                count = await submit_results(config, suite, fallback_dir=tmp_path)
 
             assert count == 0
             # ローカルJSONが保存されていること
@@ -360,7 +338,7 @@ class TestSubmitResults:
 
     @pytest.mark.asyncio
     async def test_3回リトライされる(self, tmp_path: Path):
-        """Req 6.4: 最大3回リトライ"""
+        """最大3回リトライ"""
         config = WebhookConfig(webhook_url="https://hooks.airtable.com/test")
         suite = _make_suite_result()
 
@@ -372,14 +350,14 @@ class TestSubmitResults:
             mock_client_cls.return_value = mock_client
 
             with patch("store_net_test.reporters.airtable.asyncio.sleep", new_callable=AsyncMock):
-                await submit_results(config, [suite], fallback_dir=tmp_path)
+                await submit_results(config, suite, fallback_dir=tmp_path)
 
             # 3回呼び出されること（初回 + リトライ2回）
             assert mock_client.post.call_count == 3
 
     @pytest.mark.asyncio
     async def test_リトライ後に成功(self, tmp_path: Path):
-        """Req 6.4: リトライで回復するケース"""
+        """リトライで回復するケース"""
         config = WebhookConfig(webhook_url="https://hooks.airtable.com/test")
         suite = _make_suite_result()
 
@@ -399,7 +377,7 @@ class TestSubmitResults:
             mock_client_cls.return_value = mock_client
 
             with patch("store_net_test.reporters.airtable.asyncio.sleep", new_callable=AsyncMock):
-                count = await submit_results(config, [suite], fallback_dir=tmp_path)
+                count = await submit_results(config, suite, fallback_dir=tmp_path)
 
             assert count == 1
             # ローカルJSONは保存されない

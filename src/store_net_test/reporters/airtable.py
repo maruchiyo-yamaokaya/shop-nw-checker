@@ -95,9 +95,8 @@ def build_airtable_record(suite_result: SuiteResult) -> dict:
     results_dict = suite_result_to_dict(suite_result)
 
     return {
-        "store_name": suite_result.store_name,
-        "nw_area": suite_result.nw_area,
-        "vlan": suite_result.vlan,
+        "store_code": suite_result.store_code,
+        "vlan_type": suite_result.vlan_type,
         "wan_path": suite_result.wan_path.value.upper(),
         "execution_time": suite_result.execution_timestamp.isoformat(),
         "profile": suite_result.profile_name,
@@ -129,35 +128,30 @@ async def _submit_single(
 
 async def submit_results(
     config: WebhookConfig,
-    suite_results: list[SuiteResult],
+    suite_result: SuiteResult,
     fallback_dir: Path | None = None,
 ) -> int:
     """テスト結果をAirtable Webhookに投入する
 
-    WAN経路別に個別リクエストを送信する。
     指数バックオフ付き最大3回リトライ。全リトライ失敗時はローカルJSONにフォールバック。
 
     Args:
         config: Webhook設定
-        suite_results: WAN経路別のテストスイート結果リスト
+        suite_result: テストスイート結果
         fallback_dir: フォールバック保存先ディレクトリ（省略時は./results）
 
     Returns:
-        成功した投入数
+        成功した投入数（0または1）
     """
     if fallback_dir is None:
         fallback_dir = Path("./results")
 
-    success_count = 0
+    record = build_airtable_record(suite_result)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for suite_result in suite_results:
-            record = build_airtable_record(suite_result)
-            ok = await _submit_with_retry(client, config, record, suite_result, fallback_dir)
-            if ok:
-                success_count += 1
+        ok = await _submit_with_retry(client, config, record, suite_result, fallback_dir)
 
-    return success_count
+    return 1 if ok else 0
 
 
 async def _submit_with_retry(
@@ -178,7 +172,7 @@ async def _submit_with_retry(
         try:
             await _submit_single(client, config, record)
             console.print(
-                f"✅ Airtable投入成功: {suite_result.store_name} "
+                f"✅ Airtable投入成功: {suite_result.store_code} "
                 f"({suite_result.wan_path.value.upper()})"
             )
             return True
