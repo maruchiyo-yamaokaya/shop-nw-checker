@@ -89,11 +89,9 @@ try {
 Pop-Location
 Write-Ok "Dependencies installed"
 
-# ---------- 6. Done ----------
+# ---------- 6. ツール起動 ----------
 Write-Host ""
-Write-Ok "Setup complete!"
+Write-Ok "Setup complete! Starting tool..."
 Write-Host ""
-Write-Info "Run the tool with:"
-Write-Host ""
-Write-Host "    cd $TARGET_DIR; uv run store-net-test" -ForegroundColor White
-Write-Host ""
+Set-Location $TARGET_DIR
+uv run store-net-test
