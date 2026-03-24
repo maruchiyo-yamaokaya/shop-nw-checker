@@ -45,7 +45,8 @@ function Invoke-Bootstrap {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Info "git をインストール中..."
         if (Get-Command winget -ErrorAction SilentlyContinue) {
-            & winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements
+            # 別プロセスで実行し、exitによるセッション終了を防ぐ
+            Start-Process -FilePath "winget" -ArgumentList "install","--id","Git.Git","-e","--source","winget","--accept-package-agreements","--accept-source-agreements" -Wait -NoNewWindow
             # インストール後に PATH を更新
             $env:PATH = "C:\Program Files\Git\cmd;$env:PATH"
         } else {
@@ -65,8 +66,8 @@ function Invoke-Bootstrap {
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
         Write-Info "uv をインストール中..."
         try {
-            $installScript = Invoke-RestMethod https://astral.sh/uv/install.ps1
-            & ([scriptblock]::Create($installScript))
+            # 別プロセスでuvインストーラを実行し、exitによるセッション終了を防ぐ
+            Start-Process -FilePath "powershell" -ArgumentList "-ExecutionPolicy","ByPass","-NoProfile","-Command","irm https://astral.sh/uv/install.ps1 | iex" -Wait -NoNewWindow
             # インストール後に PATH を更新
             $env:PATH = "$env:USERPROFILE\.local\bin;$env:USERPROFILE\.cargo\bin;$env:PATH"
         } catch {
