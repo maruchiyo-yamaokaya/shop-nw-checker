@@ -17,10 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker
 #### ツール起動（初回・2回目以降共通）
 
 ```bash
-uv run --project shop-nw-checker store-net-test
+git -C shop-nw-checker pull && uv sync --project shop-nw-checker && uv run --project shop-nw-checker store-net-test
 ```
-
-> 起動時にリポジトリの更新も自動で行われます。
 
 ### Windows
 
@@ -57,7 +55,7 @@ $f="$env:TEMP\bs.ps1"; irm "https://raw.githubusercontent.com/maruchiyo-yamaokay
 
 ## 2回目以降の実行
 
-- **macOS / Linux**: `uv run --project shop-nw-checker store-net-test` を実行してください
+- **macOS / Linux**: 上記のツール起動コマンドを再実行してください（pull → sync → 起動）
 - **Windows**: 同じブートストラップコマンドを再実行してください（リポジトリ更新 → ツール自動起動）
 
 ## 前提条件
