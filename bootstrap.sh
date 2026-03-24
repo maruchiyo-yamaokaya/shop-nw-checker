@@ -140,4 +140,6 @@ ok "環境構築完了"
 # ---------- 6. ツール起動 (Req 1.4) ----------
 info "ツールを起動します..."
 echo ""
-uv run --project "$TARGET_DIR" store-net-test
+# curl | bash 経由で実行された場合、stdinがパイプになり
+# questionary がターミナルを検出できないため、/dev/tty から読み込む
+uv run --project "$TARGET_DIR" store-net-test < /dev/tty
