@@ -137,9 +137,11 @@ if ! uv sync --project "$TARGET_DIR"; then
 fi
 ok "環境構築完了"
 
-# ---------- 6. ツール起動 (Req 1.4) ----------
-info "ツールを起動します..."
+# ---------- 6. ツール起動案内 (Req 1.4) ----------
 echo ""
-# curl | bash 経由で実行された場合、stdinがパイプになり
-# questionary がターミナルを検出できないため、/dev/tty から読み込む
-uv run --project "$TARGET_DIR" store-net-test < /dev/tty
+ok "セットアップ完了！"
+echo ""
+info "以下のコマンドでツールを起動してください:"
+echo ""
+echo "    cd $TARGET_DIR && uv run store-net-test"
+echo ""

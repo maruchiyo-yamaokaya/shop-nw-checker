@@ -103,9 +103,13 @@ if errorlevel 1 (
 )
 echo [OK]    環境構築完了
 
-REM ---------- 6. ツール起動 (Req 1.4) ----------
-echo [INFO]  ツールを起動します...
+REM ---------- 6. ツール起動案内 (Req 1.4) ----------
 echo.
-uv run --project "%TARGET_DIR%" store-net-test
+echo [OK]    セットアップ完了！
+echo.
+echo [INFO]  以下のコマンドでツールを起動してください:
+echo.
+echo     cd %TARGET_DIR% ^&^& uv run store-net-test
+echo.
 
 endlocal
