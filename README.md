@@ -34,7 +34,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 以下をコピペして実行してください:
 ```
-$f="$env:TEMP\bootstrap.ps1"; irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
+$f="$env:TEMP\bs.ps1"; irm "https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1?v=$(Get-Date -f yyyyMMddHHmmss)" -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
 ```
 
 ブートストラップスクリプトが以下を自動で行います:

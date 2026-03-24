@@ -9,7 +9,7 @@
 #   5. Show launch instructions
 #
 # Usage (PowerShell):
-#   $f="$env:TEMP\bootstrap.ps1"; irm https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1 -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
+#   $f="$env:TEMP\bs.ps1"; irm "https://raw.githubusercontent.com/maruchiyo-yamaokaya/shop-nw-checker/main/bootstrap.ps1?v=$(Get-Date -f yyyyMMddHHmmss)" -OutFile $f; powershell -ExecutionPolicy ByPass -File $f; Remove-Item $f
 #
 # Prerequisites: git, uv
 # ============================================================
