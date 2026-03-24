@@ -1,8 +1,8 @@
 """Setup Wizard（対話入力）
 
 questionaryを使用したステップバイステップの対話入力インターフェース。
-店舗コード → VLAN種別 → WAN経路 の3ステップで入力を収集する。
-Requirements: 1.1〜1.5, 2.1〜2.3, 3.1〜3.4, 6.1〜6.4, 10.1〜10.3, 11.1〜11.6
+店舗コード → WAN経路 の2ステップで入力を収集する。
+Requirements: 1.1, 1.2, 2.1〜2.3, 3.1〜3.4
 """
 
 from __future__ import annotations
@@ -17,9 +17,6 @@ from rich.table import Table
 from .models import WANPath, WizardInput
 
 console = Console()
-
-# VLAN種別の選択肢
-VLAN_TYPE_CHOICES = ["店舗", "POS", "公共"]
 
 # WAN経路の選択肢
 WAN_PATH_CHOICES = [
@@ -55,8 +52,8 @@ def _build_confirmation_text(inputs: WizardInput) -> str:
     """
     return (
         f"店舗コード: {inputs.store_code}\n"
-        f"VLAN種別: {inputs.vlan_type}\n"
-        f"WAN経路: {inputs.wan_path.value.upper()}"
+        f"WAN経路: {inputs.wan_path.value.upper()}\n"
+        f"テスト対象: 全VLAN（店舗・POS・公共）"
     )
 
 
@@ -75,8 +72,8 @@ def display_confirmation(inputs: WizardInput) -> bool:
     table.add_column("値", style="white")
 
     table.add_row("店舗コード", inputs.store_code)
-    table.add_row("VLAN種別", inputs.vlan_type)
     table.add_row("WAN経路", inputs.wan_path.value.upper())
+    table.add_row("テスト対象", "全VLAN（店舗・POS・公共）")
 
     console.print()
     console.print(Panel(table, title="[bold]入力内容の確認[/bold]", border_style="blue"))
@@ -95,7 +92,7 @@ def run_wizard() -> WizardInput:
     """ウィザードを実行し、入力結果を返す
 
     確認サマリーで却下された場合は最初から再開する。
-    3ステップ構成: 店舗コード → VLAN種別 → WAN経路
+    2ステップ構成: 店舗コード → WAN経路
 
     Returns:
         WizardInputオブジェクト
@@ -106,7 +103,7 @@ def run_wizard() -> WizardInput:
     console.print()
 
     while True:
-        # ステップ1: 店舗コード入力 (Req 1.1〜1.5, 11.1〜11.2)
+        # ステップ1: 店舗コード入力 (Req 2.1, 2.2)
         store_code = questionary.text(
             "店舗コードを入力してください（4桁数字）:",
             validate=lambda val: True if validate_store_code(val) is None else validate_store_code(val),
@@ -115,16 +112,7 @@ def run_wizard() -> WizardInput:
         if store_code is None:
             raise KeyboardInterrupt("ウィザードが中断されました")
 
-        # ステップ2: VLAN種別選択 (Req 2.1〜2.3)
-        vlan_type = questionary.select(
-            "VLAN種別を選択してください:",
-            choices=VLAN_TYPE_CHOICES,
-        ).ask()
-
-        if vlan_type is None:
-            raise KeyboardInterrupt("ウィザードが中断されました")
-
-        # ステップ3: WAN経路選択 (Req 6.1〜6.4)
+        # ステップ2: WAN経路選択 (Req 2.1, 2.3)
         wan_choices = [
             questionary.Choice(title=c["name"], value=c["value"])
             for c in WAN_PATH_CHOICES
@@ -142,7 +130,6 @@ def run_wizard() -> WizardInput:
         # WizardInputを構築
         wizard_input = WizardInput(
             store_code=store_code.strip(),
-            vlan_type=vlan_type,
             wan_path=wan_path,
         )
 

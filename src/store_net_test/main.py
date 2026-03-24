@@ -64,18 +64,20 @@ def _run() -> None:
     selected_profile = profiles[0]
 
     # テストスイート実行 (Req 3.1〜3.6)
-    suite_result = run_test_suite(selected_profile, wizard_input)
+    suite_results = run_test_suite(selected_profile, wizard_input)
 
-    # 結果サマリー表示 (Req 3.6)
-    display_summary(suite_result)
+    # 結果サマリー表示 (Req 6.2, 9.1〜9.3)
+    display_summary(suite_results)
 
-    # Airtable投入 (Req 6.1〜6.7)
+    # Airtable投入: 各SuiteResultを個別に投入 (Req 6.3, 6.4, 8.2)
     webhook_config = load_webhook_config()
     if webhook_config is not None:
         console.print("Airtableに結果を投入中...")
-        success_count = asyncio.run(submit_results(webhook_config, suite_result))
+        success_count = 0
+        for sr in suite_results:
+            success_count += asyncio.run(submit_results(webhook_config, sr))
         console.print(
-            f"[green]✓ {success_count}/1 件の結果を投入しました。[/green]"
+            f"[green]✓ {success_count}/3 件の結果を投入しました。[/green]"
         )
     else:
         console.print(
