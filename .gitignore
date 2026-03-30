@@ -12,7 +12,7 @@ build/
 .pytest_cache/
 
 # 環境変数・認証情報
-# 注意: .env はWebhook URL格納用にコミット対象とする（プライベートリポジトリ前提）
+.env
 .env.*
 config.local.json
 

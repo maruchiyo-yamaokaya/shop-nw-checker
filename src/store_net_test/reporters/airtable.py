@@ -9,7 +9,6 @@ Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +17,7 @@ import httpx
 from rich.console import Console
 
 from ..models import SuiteResult, TestStatus
-from .local import save_results_to_json, suite_result_to_dict
+from .local import save_results_to_json
 
 # リトライ設定
 MAX_RETRIES = 3
@@ -55,18 +54,26 @@ def _load_dotenv(env_path: Path) -> dict[str, str]:
     return values
 
 
-def load_webhook_config(env_path: Path | None = None) -> WebhookConfig | None:
-    """環境変数または.envファイルからWebhook URLを読み込む
+# デフォルトのWebhook URL（コード内に保持）
+_DEFAULT_WEBHOOK_URL = (
+    "https://hooks.airtable.com/workflows/v1/genericWebhook/"
+    "appHXyH8lXEf32CQM/wflebkrB9OHoCPLJf/wtrvxltzmeFAHgsq5"
+)
 
-    優先順位: 環境変数 > .envファイル
-    未設定の場合はNoneを返す（Airtable投入をスキップする判断に使う）。
+
+def load_webhook_config(env_path: Path | None = None) -> WebhookConfig | None:
+    """Webhook URLを取得する
+
+    優先順位: 環境変数 > .envファイル > コード内デフォルト値
+    環境変数や.envで上書き可能だが、通常はデフォルト値がそのまま使われる。
 
     Args:
         env_path: .envファイルのパス（省略時はプロジェクトルートの.env）
 
     Returns:
-        WebhookConfig、または未設定時はNone
+        WebhookConfig（常に非None）
     """
+    # 環境変数で上書き可能
     webhook_url = os.environ.get("AIRTABLE_WEBHOOK_URL")
 
     # 環境変数になければ.envファイルから読み込む
@@ -76,14 +83,45 @@ def load_webhook_config(env_path: Path | None = None) -> WebhookConfig | None:
         dotenv = _load_dotenv(env_path)
         webhook_url = dotenv.get("AIRTABLE_WEBHOOK_URL")
 
+    # どちらにもなければデフォルト値を使用
     if not webhook_url:
-        return None
+        webhook_url = _DEFAULT_WEBHOOK_URL
 
     return WebhookConfig(webhook_url=webhook_url)
 
 
+def _format_detail(result: "TestResult") -> str:
+    """TestResultの詳細を簡潔な文字列にフォーマットする"""
+    if result.error_message:
+        return result.error_message
+    d = result.details
+    parts: list[str] = []
+    if "rtt_ms" in d:
+        parts.append(f"RTT: {d['rtt_ms']}ms")
+    if "resolution_time_ms" in d:
+        parts.append(f"解決時間: {d['resolution_time_ms']}ms")
+    if "resolved_ips" in d:
+        parts.append(f"IP: {', '.join(d['resolved_ips'])}")
+    if "packet_loss_percent" in d:
+        parts.append(f"ロス: {d['packet_loss_percent']}%")
+    if "jitter_ms" in d:
+        parts.append(f"ジッター: {d['jitter_ms']}ms")
+    if "status_code" in d:
+        parts.append(f"HTTP {d['status_code']}")
+    if "response_time_ms" in d:
+        parts.append(f"{d['response_time_ms']}ms")
+    if "match" in d:
+        parts.append(f"一致: {d['match']}")
+    if "actual_shop_code" in d:
+        parts.append(f"shopCode: {d['actual_shop_code']}")
+    return ", ".join(parts) if parts else "-"
+
+
 def build_airtable_record(suite_result: SuiteResult) -> dict:
     """SuiteResultからWebhook送信用の辞書を構築する
+
+    個別テスト結果をフラットフィールド（{test_name}_status / {test_name}_detail）
+    として展開する。results_jsonは送信しない。
 
     Args:
         suite_result: テストスイート結果
@@ -91,22 +129,29 @@ def build_airtable_record(suite_result: SuiteResult) -> dict:
     Returns:
         WebhookにPOSTするJSON辞書
     """
-    summary = suite_result.summary
-    results_dict = suite_result_to_dict(suite_result)
+    from ..models import TestResult  # 循環import回避
 
-    return {
+    summary = suite_result.summary
+
+    record: dict = {
         "store_code": suite_result.store_code,
         "vlan_type": suite_result.vlan_type,
         "wan_path": suite_result.wan_path.value.upper(),
         "execution_time": suite_result.execution_timestamp.isoformat(),
         "profile": suite_result.profile_name,
         "overall_status": suite_result.overall_status.value,
-        "results_json": json.dumps(results_dict["results"], ensure_ascii=False),
         "passed_count": summary.get(TestStatus.PASS, 0),
         "failed_count": summary.get(TestStatus.FAIL, 0),
         "warning_count": summary.get(TestStatus.WARNING, 0),
         "local_ip": suite_result.local_ip,
     }
+
+    # 各テスト結果をフラットフィールドとして展開
+    for r in suite_result.results:
+        record[f"{r.test_name}_status"] = r.status.value
+        record[f"{r.test_name}_detail"] = _format_detail(r)
+
+    return record
 
 
 async def _submit_single(

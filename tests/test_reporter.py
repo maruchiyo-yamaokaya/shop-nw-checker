@@ -224,10 +224,11 @@ class TestLoadWebhookConfig:
         config = load_webhook_config(env_path=env_file)
         assert config.webhook_url == "https://hooks.airtable.com/env"
 
-    def test_未設定時はNone(self, tmp_path: Path, monkeypatch):
+    def test_未設定時はデフォルトURLが使われる(self, tmp_path: Path, monkeypatch):
         monkeypatch.delenv("AIRTABLE_WEBHOOK_URL", raising=False)
         config = load_webhook_config(env_path=tmp_path / "empty.env")
-        assert config is None
+        assert config is not None
+        assert "hooks.airtable.com" in config.webhook_url
 
 
 class TestBuildAirtableRecord:
@@ -236,21 +237,23 @@ class TestBuildAirtableRecord:
     def test_全必須フィールドが含まれる(self):
         suite = _make_suite_result()
         record = build_airtable_record(suite)
-        # Req 9.1, 9.2, 9.3: 全必須フィールドの存在確認
+        # 基本フィールドの存在確認
         assert "store_code" in record
         assert "vlan_type" in record
         assert "wan_path" in record
         assert "execution_time" in record
         assert "profile" in record
         assert "overall_status" in record
-        assert "results_json" in record
         assert "passed_count" in record
         assert "failed_count" in record
         assert "warning_count" in record
-        # 旧フィールドが含まれないこと
-        assert "store_name" not in record
-        assert "nw_area" not in record
-        assert "vlan" not in record
+        # results_jsonは廃止
+        assert "results_json" not in record
+        # フラットフィールドが展開されていること
+        assert "ping_8.8.8.8_status" in record
+        assert "ping_8.8.8.8_detail" in record
+        assert "dns_www.google.com_status" in record
+        assert "dns_www.google.com_detail" in record
 
     def test_フィールド値が正しい(self):
         suite = _make_suite_result()
@@ -276,13 +279,11 @@ class TestBuildAirtableRecord:
         assert record["warning_count"] == 1
         assert record["overall_status"] == "fail"
 
-    def test_results_jsonがJSON文字列(self):
+    def test_フラットフィールドのステータス値が正しい(self):
         suite = _make_suite_result()
         record = build_airtable_record(suite)
-        # results_jsonがパース可能なJSON文字列であること
-        parsed = json.loads(record["results_json"])
-        assert isinstance(parsed, list)
-        assert len(parsed) == 2
+        assert record["ping_8.8.8.8_status"] == "pass"
+        assert record["dns_www.google.com_status"] == "pass"
 
     def test_wan_pathが大文字(self):
         """WAN経路がAirtable用に大文字変換されること"""

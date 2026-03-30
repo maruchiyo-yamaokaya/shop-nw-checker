@@ -71,18 +71,13 @@ def _run() -> None:
 
     # Airtable投入: 各SuiteResultを個別に投入 (Req 6.3, 6.4, 8.2)
     webhook_config = load_webhook_config()
-    if webhook_config is not None:
-        console.print("Airtableに結果を投入中...")
-        success_count = 0
-        for sr in suite_results:
-            success_count += asyncio.run(submit_results(webhook_config, sr))
-        console.print(
-            f"[green]✓ {success_count}/3 件の結果を投入しました。[/green]"
-        )
-    else:
-        console.print(
-            "[yellow]⚠ AIRTABLE_WEBHOOK_URL が未設定のため、Airtable投入をスキップしました。[/yellow]"
-        )
+    console.print("Airtableに結果を投入中...")
+    success_count = 0
+    for sr in suite_results:
+        success_count += asyncio.run(submit_results(webhook_config, sr))
+    console.print(
+        f"[green]✓ {success_count}/{len(suite_results)} 件の結果を投入しました。[/green]"
+    )
 
     console.print()
     console.print("[bold green]テスト完了。[/bold green]")
