@@ -8,6 +8,7 @@ Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from rich.console import Console
@@ -255,16 +256,19 @@ def _print_test_status(results: list[TestResult]) -> None:
 def run_test_suite(
     profile: TestProfile,
     wizard_input: WizardInput,
+    on_vlan_complete: Callable[[SuiteResult], None] | None = None,
 ) -> list[SuiteResult]:
     """全VLAN種別を順次テストし、list[SuiteResult]を返す
 
     VLAN_TYPES の定義順（店舗 → POS → 公共）で各VLANに対して
     接続準備プロンプトを表示後、テストスイートを実行する。
+    各VLANテスト完了時にon_vlan_completeコールバックを呼び出す。
     (Req 4.4, 5.1, 5.2, 5.3, 5.4)
 
     Args:
         profile: テストプロファイル
         wizard_input: ウィザード入力結果
+        on_vlan_complete: 各VLANテスト完了時に呼ばれるコールバック（省略可）
 
     Returns:
         list[SuiteResult]: 各VLAN種別のテスト結果リスト（3件）
@@ -283,6 +287,10 @@ def run_test_suite(
             profile, wizard_input.wan_path, wizard_input, vlan_type
         )
         suite_results.append(result)
+
+        # 各VLAN完了直後にコールバック実行
+        if on_vlan_complete is not None:
+            on_vlan_complete(result)
 
     return suite_results
 

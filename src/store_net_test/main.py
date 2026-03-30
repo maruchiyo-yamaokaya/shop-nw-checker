@@ -14,6 +14,7 @@ from pathlib import Path
 from rich.console import Console
 
 from .profile import load_profiles
+from .models import SuiteResult
 from .reporters.airtable import load_webhook_config, submit_results
 from .runner import display_summary, run_test_suite
 from .utils.network import check_internet_connectivity
@@ -63,20 +64,27 @@ def _run() -> None:
     # テストプロファイルは最初に読み込まれたプロファイルを自動使用 (Req 3.5)
     selected_profile = profiles[0]
 
+    # Airtable投入設定を事前に取得
+    webhook_config = load_webhook_config()
+    success_count = 0
+
+    def _on_vlan_complete(sr: "SuiteResult") -> None:
+        """各VLANテスト完了直後にAirtableへ送信するコールバック"""
+        nonlocal success_count
+        console.print(f"  📡 Airtable投入中 ({sr.vlan_type})...")
+        success_count += asyncio.run(submit_results(webhook_config, sr))
+
     # テストスイート実行 (Req 3.1〜3.6)
-    suite_results = run_test_suite(selected_profile, wizard_input)
+    # 各VLAN完了直後にAirtable送信
+    suite_results = run_test_suite(
+        selected_profile, wizard_input, on_vlan_complete=_on_vlan_complete
+    )
 
     # 結果サマリー表示 (Req 6.2, 9.1〜9.3)
     display_summary(suite_results)
 
-    # Airtable投入: 各SuiteResultを個別に投入 (Req 6.3, 6.4, 8.2)
-    webhook_config = load_webhook_config()
-    console.print("Airtableに結果を投入中...")
-    success_count = 0
-    for sr in suite_results:
-        success_count += asyncio.run(submit_results(webhook_config, sr))
     console.print(
-        f"[green]✓ {success_count}/{len(suite_results)} 件の結果を投入しました。[/green]"
+        f"[green]✓ {success_count}/{len(suite_results)} 件の結果をAirtableに投入しました。[/green]"
     )
 
     console.print()
