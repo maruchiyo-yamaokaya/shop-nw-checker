@@ -14,6 +14,9 @@ dependencies = [
 [project.scripts]
 store-net-test = "store_net_test.main:main"
 
+[project.optional-dependencies]
+ssm = ["boto3>=1.34"]
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.100",
@@ -32,6 +35,9 @@ packages = ["src/store_net_test"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "property: property-based tests",
+]
 filterwarnings = [
     # TestProfile/TestResult/TestStatusデータクラスのpytest誤認識を抑制
     "ignore::pytest.PytestCollectionWarning",

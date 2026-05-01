@@ -4,10 +4,13 @@
 単一のWAN経路でテストスイートを実行する。
 テスト項目のシステムエラー時はスキップして次に進む。
 Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
+Requirements (逆方向チェック統合): 2.1, 2.2, 2.3, 2.6, 2.7, 2.8,
+    3.1, 3.2, 3.3, 3.4, 5.2, 5.3, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 
@@ -16,6 +19,8 @@ from rich.table import Table
 
 from .models import (
     PingTarget,
+    ReverseCheckTarget,
+    SSMProbeConfig,
     SuiteResult,
     TestProfile,
     TestResult,
@@ -27,14 +32,278 @@ from .tests.dns import run_dns_test
 from .tests.gateway_dns import run_gateway_dns_test
 from .tests.https_check import run_https_check
 from .tests.ping import run_ping_test
+from .tests.ping_output_parser import parse_ping_output
+from .tests.ssm_probe import (
+    check_aws_credentials,
+    check_boto3_available,
+    send_ssm_ping_commands_parallel,
+)
 from .tests.stability import run_stability_test
 from .tests.whereami import run_whereami_test
-from .utils.network import get_local_ip
+from .utils.network import get_local_ip, is_ip_in_ranges
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
 # 順次テスト対象のVLAN種別リスト (Req 4.4)
 VLAN_TYPES: list[str] = ["店舗", "POS", "公共"]
+
+
+def evaluate_reverse_ping_status(
+    packet_loss_percent: float,
+    loss_threshold_percent: float,
+) -> TestStatus:
+    """パケットロス率と閾値からステータスを判定する
+
+    loss <= threshold なら PASS、超過なら FAIL。
+
+    Args:
+        packet_loss_percent: 実測パケットロス率
+        loss_threshold_percent: 許容パケットロス率閾値
+
+    Returns:
+        判定結果のTestStatus
+    """
+    if packet_loss_percent <= loss_threshold_percent:
+        return TestStatus.PASS
+    return TestStatus.FAIL
+
+
+def _should_run_reverse_check(
+    profile: TestProfile,
+    vlan_type: str,
+    local_ip: str | None,
+) -> bool:
+    """逆方向チェックの実行条件を判定する
+
+    以下の全条件を満たす場合にTrueを返す:
+    1. profile.ssm_probeが存在する
+    2. 当該VLANのreverse_check_targetsが存在する
+    3. local_ipがlocal_network_rangesのいずれかの範囲内にある
+
+    条件不成立時はスキップ理由をコンソールに表示する。
+    (Req 6.1, 6.2, 6.3, 6.4)
+
+    Args:
+        profile: テストプロファイル
+        vlan_type: VLAN種別名
+        local_ip: ローカルPCのIPアドレス
+
+    Returns:
+        実行すべきならTrue
+    """
+    # 条件1: ssm_probeセクションが存在するか (Req 6.2)
+    if profile.ssm_probe is None:
+        return False
+
+    # 条件2: 当該VLANのreverse_check_targetsが存在するか (Req 6.1, 6.2)
+    # 全VLANで共通のvlan_tests設定を使用する
+    if profile.vlan_tests is None:
+        return False
+    if profile.vlan_tests.reverse_check_targets is None:
+        return False
+    if len(profile.vlan_tests.reverse_check_targets) == 0:
+        return False
+
+    # 条件3: local_ipがlocal_network_ranges内にあるか (Req 6.3, 6.4)
+    if local_ip is None:
+        return False
+    if not is_ip_in_ranges(local_ip, profile.ssm_probe.local_network_ranges):
+        console.print(
+            f"  [yellow]⚠ ローカルIP ({local_ip}) は店舗LAN範囲外です。"
+            f"逆方向チェックをスキップします。[/yellow]"
+        )
+        return False
+
+    return True
+
+
+def _expand_reverse_check_targets(
+    targets: list[ReverseCheckTarget],
+    local_ip: str,
+    store_code: str,
+    domain: str,
+) -> list[tuple[ReverseCheckTarget, str]]:
+    """target_kindに応じて実ターゲット文字列に展開する
+
+    local_pc → 1個（local_ip）
+    named_terminal → terminal_prefixesからホスト名を直接構築（Route 53不要）
+    デフォルトのterminal_prefixesは ["rt", "sw", "prn"]
+
+    Args:
+        targets: 逆方向チェック対象リスト
+        local_ip: ローカルPCのIPアドレス
+        store_code: 店舗コード
+        domain: ドメイン名（例: "yamaokaya.net"）
+
+    Returns:
+        (ReverseCheckTarget, 実ターゲット文字列) のタプルリスト
+    """
+    default_prefixes = ["rt", "sw", "prn"]
+    expanded: list[tuple[ReverseCheckTarget, str]] = []
+    for target in targets:
+        if target.target_kind == "local_pc":
+            expanded.append((target, local_ip))
+        elif target.target_kind == "named_terminal":
+            prefixes = target.terminal_prefixes or default_prefixes
+            for prefix in prefixes:
+                hostname = f"{prefix}.s{store_code}.{domain}"
+                expanded.append((target, hostname))
+    return expanded
+
+
+def _run_reverse_check(
+    config: SSMProbeConfig,
+    targets: list[ReverseCheckTarget],
+    store_code: str,
+    local_ip: str,
+    wan_path: WANPath,
+) -> list[TestResult]:
+    """逆方向チェックを実行する
+
+    1. boto3利用可否・AWS認証確認
+    2. terminal_prefixesからホスト名を直接構築（Route 53不要）
+    3. 各ターゲットに対してSSM Send Commandを並列発行
+    4. 結果をOutput_Parserで解析（ValueError時はERROR TestResult化）
+    5. 閾値判定してTestResultを生成
+
+    Args:
+        config: SSMプローブ設定
+        targets: 逆方向チェック対象リスト
+        store_code: 店舗コード（WizardInput.store_codeから取得）
+        local_ip: ローカルPCのIPアドレス
+        wan_path: WAN経路
+
+    Returns:
+        TestResultのリスト
+    """
+    results: list[TestResult] = []
+
+    # boto3利用可否確認 (Req 3.1, 3.2)
+    if not check_boto3_available():
+        console.print(
+            "  [red]⚠ boto3がインストールされていません。"
+            "逆方向チェックをスキップします。[/red]"
+        )
+        return results
+
+    # AWS認証確認 (Req 3.3, 3.4)
+    if not check_aws_credentials(config.region):
+        console.print(
+            "  [red]⚠ AWS認証情報が無効です。"
+            "逆方向チェックをスキップします。[/red]"
+        )
+        return results
+
+    # ターゲット展開（ホスト名をパターンから直接構築、Route 53不要）
+    expanded = _expand_reverse_check_targets(
+        targets, local_ip, store_code, config.hosted_zone_domain
+    )
+
+    if not expanded:
+        return results
+
+    # 全ターゲットのSSM Send Commandを並列発行
+    console.print(
+        f"    [dim]→ 逆方向ping: {len(expanded)}ターゲットを並列実行中...[/dim]"
+    )
+
+    # 並列送信用のターゲットリスト構築
+    parallel_targets: list[tuple[str, int]] = [
+        (actual_target, target_config.count)
+        for target_config, actual_target in expanded
+    ]
+
+    try:
+        # 全ターゲットを一括送信 → まとめてポーリング
+        parallel_results = send_ssm_ping_commands_parallel(config, parallel_targets)
+
+        # 結果をTestResultに変換
+        for target_config, actual_target in expanded:
+            ssm_results = parallel_results.get(actual_target, [])
+
+            for ssm_result in ssm_results:
+                now = datetime.now(timezone.utc)
+
+                # TestResult名の決定 (Req 6.5)
+                if target_config.target_kind == "local_pc":
+                    test_name = f"reverse_ping_localpc@{ssm_result.instance_id}"
+                else:
+                    test_name = f"reverse_ping_{actual_target}@{ssm_result.instance_id}"
+
+                # SSMコマンド失敗時のハンドリング
+                # 注意: pingコマンドは100%パケットロス時にexit code 1を返す。
+                # status=="Success"かつResponseCode!=0の場合、stdoutにping統計が
+                # 含まれていればOutput_Parserで解析を試みる。
+                if ssm_result.status != "Success":
+                    error_msg = ssm_result.stderr or f"SSMステータス: {ssm_result.status}"
+                    status = TestStatus.ERROR if ssm_result.status in (
+                        "TimedOut", "DeliveryTimedOut", "ExecutionTimedOut", "Cancelled"
+                    ) else TestStatus.FAIL
+                    results.append(TestResult(
+                        test_name=test_name,
+                        wan_path=wan_path,
+                        status=status,
+                        timestamp=now,
+                        details={
+                            "probe_instance_id": ssm_result.instance_id,
+                            "target": actual_target,
+                            "target_kind": target_config.target_kind,
+                            "ssm_status": ssm_result.status,
+                            "response_code": ssm_result.response_code,
+                        },
+                        error_message=error_msg,
+                    ))
+                    continue
+
+                # コマンド成功 → Output_Parserで解析 (Req 5.3)
+                try:
+                    ping_result = parse_ping_output(ssm_result.stdout)
+                except ValueError as e:
+                    results.append(TestResult(
+                        test_name=test_name,
+                        wan_path=wan_path,
+                        status=TestStatus.ERROR,
+                        timestamp=now,
+                        details={
+                            "probe_instance_id": ssm_result.instance_id,
+                            "target": actual_target,
+                            "target_kind": target_config.target_kind,
+                            "raw_output": ssm_result.stdout[:500],
+                        },
+                        error_message=f"ping出力パース失敗: {e}",
+                    ))
+                    continue
+
+                # 閾値判定 (Req 5.2)
+                status = evaluate_reverse_ping_status(
+                    ping_result.packet_loss_percent,
+                    target_config.loss_threshold_percent,
+                )
+
+                results.append(TestResult(
+                    test_name=test_name,
+                    wan_path=wan_path,
+                    status=status,
+                    timestamp=now,
+                    details={
+                        "probe_instance_id": ssm_result.instance_id,
+                        "target": actual_target,
+                        "target_kind": target_config.target_kind,
+                        "packets_transmitted": ping_result.packets_transmitted,
+                        "packets_received": ping_result.packets_received,
+                        "packet_loss_percent": ping_result.packet_loss_percent,
+                        "rtt_avg_ms": ping_result.rtt_avg_ms,
+                        "loss_threshold_percent": target_config.loss_threshold_percent,
+                    },
+                ))
+
+    except Exception as e:
+        logger.error("逆方向チェックエラー: %s", e)
+        console.print(f"  [red]⚠ 逆方向チェックでエラー: {e}[/red]")
+
+    return results
 
 
 def prompt_vlan_connection(vlan_type: str) -> None:
@@ -91,6 +360,7 @@ def _run_tests_for_wan_path(
 
     DNS → Ping → 安定性の順で実行。各テスト項目でエラーが発生しても
     スキップして次に進む（Req 3.5）。
+    各VLANテストの最後に逆方向チェックを実行する（Req 6.1）。
 
     Args:
         profile: テストプロファイル
@@ -229,6 +499,25 @@ def _run_tests_for_wan_path(
                 _print_test_status(neg_dns_results)
             except Exception as e:
                 console.print(f"  [red]⚠ 内部NWリソースDNS解決不可テストでエラー: {e}[/red]")
+
+        # 逆方向チェック（各VLANテストの最後に実行）(Req 6.1, 6.2, 6.3, 6.4)
+        if _should_run_reverse_check(profile, vlan_type, local_ip):
+            console.print(
+                f"  [cyan]▶ 逆方向チェック[/cyan] ({wan_path.value.upper()})"
+            )
+            try:
+                reverse_results = _run_reverse_check(
+                    config=profile.ssm_probe,  # type: ignore[arg-type]
+                    targets=profile.vlan_tests.reverse_check_targets,  # type: ignore[arg-type]
+                    store_code=wizard_input.store_code,
+                    local_ip=local_ip,  # type: ignore[arg-type]
+                    wan_path=wan_path,
+                )
+                results.extend(reverse_results)
+                _print_test_status(reverse_results)
+            except Exception as e:
+                logger.error("逆方向チェック全体エラー: %s", e)
+                console.print(f"  [red]⚠ 逆方向チェックでエラー: {e}[/red]")
 
     return SuiteResult(
         store_code=wizard_input.store_code,

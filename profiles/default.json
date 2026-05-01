@@ -38,6 +38,28 @@
     ],
     "public_dns_negative_targets": [
       "nx.yamaokaya.net"
+    ],
+    "reverse_check_targets": [
+      { "target_kind": "local_pc", "count": 5, "loss_threshold_percent": 20 },
+      { "target_kind": "named_terminal", "count": 5, "loss_threshold_percent": 20, "terminal_prefixes": ["rt", "sw", "prn"] }
+    ]
+  },
+  "ssm_probe": {
+    "region": "ap-northeast-1",
+    "timeout_seconds": 60,
+    "hosted_zone_domain": "yamaokaya.net",
+    "document_name": "AWS-RunShellScript",
+    "target_tag_key": "NetCheckProbe",
+    "target_tag_value": "true",
+    "hosted_zone_id": "ZPS49ZOFSRKVC",
+    "local_network_ranges": [
+      "192.168.2.0/23",
+      "192.168.4.0/22",
+      "192.168.8.0/21",
+      "192.168.16.0/20",
+      "192.168.32.0/19",
+      "192.168.64.0/18",
+      "192.168.128.0/17"
     ]
   }
 }

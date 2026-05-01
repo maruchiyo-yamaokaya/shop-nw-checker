@@ -225,3 +225,31 @@ def get_local_ip() -> str | None:
     except OSError:
         return None
 
+
+
+def is_ip_in_ranges(ip_str: str, ranges: list[str]) -> bool:
+    """IPアドレスがCIDR範囲リストのいずれかに含まれるか判定する
+
+    Python標準ライブラリのipaddressモジュールを使用。
+
+    Args:
+        ip_str: 判定対象のIPv4アドレス文字列
+        ranges: CIDR表記のネットワーク範囲リスト（例: ["192.168.2.0/23", "192.168.4.0/22"]）
+
+    Returns:
+        いずれかの範囲に含まれればTrue、含まれなければFalse
+    """
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+
+    for cidr in ranges:
+        try:
+            network = ipaddress.ip_network(cidr, strict=False)
+            if addr in network:
+                return True
+        except ValueError:
+            continue
+
+    return False

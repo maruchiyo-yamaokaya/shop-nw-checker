@@ -9,7 +9,99 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .models import GatewayDnsTarget, PingTarget, PosDevice, StabilityConfig, TestProfile, VlanTestConfig
+from .models import (
+    GatewayDnsTarget,
+    PingTarget,
+    PosDevice,
+    ReverseCheckTarget,
+    SSMProbeConfig,
+    StabilityConfig,
+    TestProfile,
+    VlanTestConfig,
+)
+
+
+def parse_ssm_probe_config(data: dict) -> SSMProbeConfig:
+    """ssm_probeセクション辞書からSSMProbeConfigオブジェクトを生成する
+
+    デフォルト値の適用: document_name, target_tag_key, target_tag_value
+
+    Args:
+        data: ssm_probeセクションの辞書
+
+    Returns:
+        SSMProbeConfigオブジェクト
+
+    Raises:
+        KeyError: 必須フィールドが欠損している場合
+    """
+    return SSMProbeConfig(
+        region=data["region"],
+        timeout_seconds=data["timeout_seconds"],
+        hosted_zone_domain=data["hosted_zone_domain"],
+        local_network_ranges=list(data["local_network_ranges"]),
+        document_name=data.get("document_name", "AWS-RunShellScript"),
+        target_tag_key=data.get("target_tag_key", "NetCheckProbe"),
+        target_tag_value=data.get("target_tag_value", "true"),
+        hosted_zone_id=data.get("hosted_zone_id"),
+    )
+
+
+def ssm_probe_config_to_dict(config: SSMProbeConfig) -> dict:
+    """SSMProbeConfigオブジェクトを辞書に変換する
+
+    Args:
+        config: SSMProbeConfigオブジェクト
+
+    Returns:
+        JSON直列化可能な辞書
+    """
+    return {
+        "region": config.region,
+        "timeout_seconds": config.timeout_seconds,
+        "hosted_zone_domain": config.hosted_zone_domain,
+        "local_network_ranges": list(config.local_network_ranges),
+        "document_name": config.document_name,
+        "target_tag_key": config.target_tag_key,
+        "target_tag_value": config.target_tag_value,
+        "hosted_zone_id": config.hosted_zone_id,
+    }
+
+
+def validate_ssm_probe_config(config: SSMProbeConfig) -> list[str]:
+    """SSMProbeConfigのバリデーション
+
+    必須フィールドの存在確認とlocal_network_rangesの形式チェックを行う。
+
+    Args:
+        config: 検証対象のSSMProbeConfig
+
+    Returns:
+        エラーメッセージのリスト（空リストなら有効）
+    """
+    import ipaddress
+
+    errors: list[str] = []
+
+    # 必須フィールドの存在確認
+    if not config.region or not config.region.strip():
+        errors.append("ssm_probe.regionが空です")
+    if not config.timeout_seconds or config.timeout_seconds <= 0:
+        errors.append(f"ssm_probe.timeout_secondsは正の値である必要があります: {config.timeout_seconds}")
+    if not config.hosted_zone_domain or not config.hosted_zone_domain.strip():
+        errors.append("ssm_probe.hosted_zone_domainが空です")
+
+    # local_network_rangesの形式チェック
+    if not config.local_network_ranges:
+        errors.append("ssm_probe.local_network_rangesが空です")
+    else:
+        for i, cidr in enumerate(config.local_network_ranges):
+            try:
+                ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                errors.append(f"ssm_probe.local_network_ranges[{i}]のCIDR形式が不正です: {cidr}")
+
+    return errors
 
 
 def parse_profile(data: dict) -> TestProfile:
@@ -42,6 +134,18 @@ def parse_profile(data: dict) -> TestProfile:
     vlan_tests: VlanTestConfig | None = None
     if "vlan_tests" in data:
         vt = data["vlan_tests"]
+        # reverse_check_targetsのパース（存在する場合のみ）
+        reverse_check_targets: list[ReverseCheckTarget] | None = None
+        if "reverse_check_targets" in vt:
+            reverse_check_targets = [
+                ReverseCheckTarget(
+                    target_kind=t["target_kind"],
+                    count=t.get("count", 5),
+                    loss_threshold_percent=t.get("loss_threshold_percent", 20.0),
+                    terminal_prefixes=t.get("terminal_prefixes"),
+                )
+                for t in vt["reverse_check_targets"]
+            ]
         vlan_tests = VlanTestConfig(
             https_urls=list(vt["https_urls"]),
             store_gateway_dns_targets=[
@@ -55,7 +159,13 @@ def parse_profile(data: dict) -> TestProfile:
                 for d in vt["pos_devices"]
             ],
             public_dns_negative_targets=list(vt["public_dns_negative_targets"]),
+            reverse_check_targets=reverse_check_targets,
         )
+
+    # SSMプローブ設定のパース（存在する場合のみ）
+    ssm_probe: SSMProbeConfig | None = None
+    if "ssm_probe" in data:
+        ssm_probe = parse_ssm_probe_config(data["ssm_probe"])
 
     return TestProfile(
         name=data["name"],
@@ -64,6 +174,7 @@ def parse_profile(data: dict) -> TestProfile:
         dns_targets=list(data["dns_targets"]),
         stability=stability,
         vlan_tests=vlan_tests,
+        ssm_probe=ssm_probe,
     )
 
 
@@ -96,7 +207,7 @@ def profile_to_dict(profile: TestProfile) -> dict:
     # VLAN固有テスト設定の直列化（存在する場合のみ）
     if profile.vlan_tests is not None:
         vt = profile.vlan_tests
-        result["vlan_tests"] = {
+        vlan_dict: dict = {
             "https_urls": list(vt.https_urls),
             "store_gateway_dns_targets": [
                 {"hostname": t.hostname, "expect": t.expect}
@@ -110,6 +221,22 @@ def profile_to_dict(profile: TestProfile) -> dict:
             ],
             "public_dns_negative_targets": list(vt.public_dns_negative_targets),
         }
+        # reverse_check_targetsの直列化（存在する場合のみ）
+        if vt.reverse_check_targets is not None:
+            vlan_dict["reverse_check_targets"] = [
+                {
+                    "target_kind": t.target_kind,
+                    "count": t.count,
+                    "loss_threshold_percent": t.loss_threshold_percent,
+                    **({"terminal_prefixes": t.terminal_prefixes} if t.terminal_prefixes is not None else {}),
+                }
+                for t in vt.reverse_check_targets
+            ]
+        result["vlan_tests"] = vlan_dict
+
+    # SSMプローブ設定の直列化（存在する場合のみ）
+    if profile.ssm_probe is not None:
+        result["ssm_probe"] = ssm_probe_config_to_dict(profile.ssm_probe)
 
     return result
 
@@ -176,6 +303,11 @@ def validate_profile(profile: TestProfile) -> list[str]:
             errors.append("vlan_tests.public_dns_negative_targetsが空です")
         if not vt.store_gateway_dns_targets:
             errors.append("vlan_tests.store_gateway_dns_targetsが空です")
+
+    # SSMプローブ設定チェック（存在する場合のみ）
+    if profile.ssm_probe is not None:
+        ssm_errors = validate_ssm_probe_config(profile.ssm_probe)
+        errors.extend(ssm_errors)
 
     return errors
 
