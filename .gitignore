@@ -8,6 +8,9 @@ build/
 # 仮想環境
 .venv/
 
+# uv lockファイル（環境差異で競合するため）
+uv.lock
+
 # pytest
 .pytest_cache/
 
