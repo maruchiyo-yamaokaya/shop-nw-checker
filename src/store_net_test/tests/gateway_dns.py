@@ -88,14 +88,10 @@ def _resolve_single(
                 "is_private": any(is_private_ip(ip) for ip in resolved_ips),
             },
         )
-    except (
-        dns.resolver.NXDOMAIN,
-        dns.resolver.NoAnswer,
-        dns.resolver.NoNameservers,
-    ) as e:
+    except dns.resolver.NXDOMAIN:
         elapsed_ms = (time.monotonic() - start) * 1000
-        # 名前解決失敗
-        status = _evaluate_result(target.expect, [], resolved=False)
+        # NXDOMAINのみ「名前解決ブロック」として扱う
+        status = _evaluate_result(target.expect, [], resolved=False, nxdomain=True)
         return TestResult(
             test_name=test_name,
             wan_path=wan_path,
@@ -106,6 +102,27 @@ def _resolve_single(
                 "hostname": target.hostname,
                 "expect": target.expect,
                 "resolved_ips": [],
+                "reason": "NXDOMAIN",
+            },
+        )
+    except (
+        dns.resolver.NoAnswer,
+        dns.resolver.NoNameservers,
+    ) as e:
+        elapsed_ms = (time.monotonic() - start) * 1000
+        # NoAnswer/NoNameserversは「解決できなかった」だが「ブロック」とは限らない
+        status = _evaluate_result(target.expect, [], resolved=False, nxdomain=False)
+        return TestResult(
+            test_name=test_name,
+            wan_path=wan_path,
+            status=status,
+            timestamp=datetime.now(timezone.utc),
+            details={
+                "gateway_ip": gateway_ip,
+                "hostname": target.hostname,
+                "expect": target.expect,
+                "resolved_ips": [],
+                "reason": type(e).__name__,
             },
         )
     except Exception as e:
@@ -119,13 +136,17 @@ def _resolve_single(
                 "gateway_ip": gateway_ip,
                 "hostname": target.hostname,
                 "expect": target.expect,
+                "reason": type(e).__name__,
             },
             error_message=str(e),
         )
 
 
 def _evaluate_result(
-    expect: str, resolved_ips: list[str], resolved: bool
+    expect: str,
+    resolved_ips: list[str],
+    resolved: bool,
+    nxdomain: bool = False,
 ) -> TestStatus:
     """期待値に基づいてテスト結果を判定する
 
@@ -133,6 +154,7 @@ def _evaluate_result(
         expect: 期待値 ("private_ip" | "nxdomain" | "resolve_success")
         resolved_ips: 解決されたIPアドレスリスト
         resolved: 名前解決が成功したかどうか
+        nxdomain: NXDOMAIN応答だったかどうか（NoAnswer等と区別するため）
     """
     if expect == "private_ip":
         # 解決成功かつプライベートIPならPASS
@@ -140,8 +162,8 @@ def _evaluate_result(
             return TestStatus.PASS
         return TestStatus.FAIL
     elif expect == "nxdomain":
-        # 名前解決失敗ならPASS
-        return TestStatus.PASS if not resolved else TestStatus.FAIL
+        # NXDOMAINが返った場合のみPASS（NoAnswer/NoNameserversはFAIL）
+        return TestStatus.PASS if nxdomain else TestStatus.FAIL
     elif expect == "resolve_success":
         # 名前解決成功ならPASS
         return TestStatus.PASS if resolved else TestStatus.FAIL
