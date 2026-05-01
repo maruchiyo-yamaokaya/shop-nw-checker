@@ -132,6 +132,77 @@ def _get_gateway_unix() -> str | None:
 
     return None
 
+def get_system_dns_servers() -> list[str]:
+    """OSに設定されたDNSサーバーのIPアドレスリストを取得する
+
+    macOS: `scutil --dns` の出力をパース
+    Windows: `ipconfig /all` の出力をパース
+    Linux: `/etc/resolv.conf` をパース
+
+    Returns:
+        DNSサーバーIPアドレスのリスト（重複排除済み）。取得失敗時は空リスト
+    """
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            return _get_dns_servers_macos()
+        elif system == "Windows":
+            return _get_dns_servers_windows()
+        else:
+            return _get_dns_servers_linux()
+    except Exception:
+        return []
+
+
+def _get_dns_servers_macos() -> list[str]:
+    """macOS: scutil --dns からDNSサーバーを取得する"""
+    output = subprocess.check_output(
+        ["scutil", "--dns"], text=True, timeout=10
+    )
+    servers: list[str] = []
+    for line in output.splitlines():
+        match = re.search(r"nameserver\[\d+\]\s*:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
+        if match:
+            ip = match.group(1)
+            if ip not in servers:
+                servers.append(ip)
+    return servers
+
+
+def _get_dns_servers_windows() -> list[str]:
+    """Windows: ipconfig /all からDNSサーバーを取得する"""
+    output = subprocess.check_output(
+        ["ipconfig", "/all"], text=True, timeout=10
+    )
+    servers: list[str] = []
+    for line in output.splitlines():
+        if "dns" in line.lower() or "DNS" in line:
+            match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
+            if match:
+                ip = match.group(1)
+                if ip not in servers:
+                    servers.append(ip)
+    return servers
+
+
+def _get_dns_servers_linux() -> list[str]:
+    """Linux: /etc/resolv.conf からDNSサーバーを取得する"""
+    servers: list[str] = []
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("nameserver"):
+                    match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", line)
+                    if match:
+                        ip = match.group(1)
+                        if ip not in servers:
+                            servers.append(ip)
+    except OSError:
+        pass
+    return servers
+
+
 def get_local_ip() -> str | None:
     """アクティブNICのローカルIPアドレスを取得する
 

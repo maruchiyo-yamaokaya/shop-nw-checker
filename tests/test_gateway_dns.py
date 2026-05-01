@@ -58,26 +58,26 @@ class TestRunGatewayDnsTest:
     """run_gateway_dns_test: ゲートウェイDNS解決テスト"""
 
     def test_ゲートウェイ取得失敗時は全テスト項目FAIL(self):
-        """ゲートウェイIP取得失敗時は全テスト項目がFAILになる (Req 2.8)"""
+        """DNSサーバー取得失敗時は全テスト項目がFAILになる (Req 2.8)"""
         targets = [
             GatewayDnsTarget(hostname="api.yamaokaya.net", expect="private_ip"),
             GatewayDnsTarget(hostname="pornhub.com", expect="nxdomain"),
         ]
 
         with patch(
-            "store_net_test.tests.gateway_dns.get_default_gateway",
-            return_value=None,
+            "store_net_test.tests.gateway_dns.get_system_dns_servers",
+            return_value=[],
         ):
             results = run_gateway_dns_test(targets, WANPath.FTTH)
 
         assert len(results) == 2
         for result in results:
             assert result.status == TestStatus.FAIL
-            assert result.error_message == "デフォルトゲートウェイの取得に失敗しました"
+            assert result.error_message == "DNSサーバーの取得に失敗しました"
             assert result.wan_path == WANPath.FTTH
 
     def test_正常なDNS解決でPASS判定(self):
-        """ゲートウェイDNSで正常に解決されPASS判定される (Req 2.4)"""
+        """DNSサーバーで正常に解決されPASS判定される (Req 2.4)"""
         targets = [
             GatewayDnsTarget(hostname="api.yamaokaya.net", expect="private_ip"),
         ]
@@ -92,8 +92,8 @@ class TestRunGatewayDnsTest:
         mock_resolver.resolve.return_value = mock_answer
 
         with patch(
-            "store_net_test.tests.gateway_dns.get_default_gateway",
-            return_value="192.168.1.1",
+            "store_net_test.tests.gateway_dns.get_system_dns_servers",
+            return_value=["192.168.250.254", "192.168.251.254"],
         ), patch(
             "store_net_test.tests.gateway_dns.dns.resolver.Resolver",
             return_value=mock_resolver,
@@ -102,7 +102,7 @@ class TestRunGatewayDnsTest:
 
         assert len(results) == 1
         assert results[0].status == TestStatus.PASS
-        assert results[0].details["gateway_ip"] == "192.168.1.1"
+        assert results[0].details["dns_servers"] == ["192.168.250.254", "192.168.251.254"]
         assert results[0].details["hostname"] == "api.yamaokaya.net"
 
     def test_各ターゲットに個別のTestResultが生成される(self):
@@ -141,8 +141,8 @@ class TestRunGatewayDnsTest:
         mock_resolver.resolve.side_effect = resolve_side_effect
 
         with patch(
-            "store_net_test.tests.gateway_dns.get_default_gateway",
-            return_value="192.168.1.1",
+            "store_net_test.tests.gateway_dns.get_system_dns_servers",
+            return_value=["192.168.250.254"],
         ), patch(
             "store_net_test.tests.gateway_dns.dns.resolver.Resolver",
             return_value=mock_resolver,
