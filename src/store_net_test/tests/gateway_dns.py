@@ -1,7 +1,8 @@
-"""デフォルトゲートウェイDNS解決テストモジュール
+"""店舗ネットワークDNS解決テストモジュール
 
-デフォルトゲートウェイIPをDNSサーバーとして使用し、
+OSに設定されたDNSサーバーを使用し、
 内部ドメインの名前解決結果を検証する。
+ゲートウェイIPがDNSサーバーを兼ねない環境にも対応。
 Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10
 """
 
@@ -13,16 +14,16 @@ from datetime import datetime, timezone
 import dns.resolver
 
 from ..models import GatewayDnsTarget, TestResult, TestStatus, WANPath
-from ..utils.network import get_default_gateway, is_private_ip
+from ..utils.network import get_system_dns_servers, is_private_ip
 
 
 def run_gateway_dns_test(
     targets: list[GatewayDnsTarget],
     wan_path: WANPath,
 ) -> list[TestResult]:
-    """デフォルトゲートウェイDNS解決テストを実行する
+    """店舗ネットワークDNS解決テストを実行する
 
-    システムのデフォルトゲートウェイIPをDNSサーバーとして使用し、
+    OSに設定されたDNSサーバーを使用し、
     各ホスト名の解決結果を期待値と照合する。
 
     Args:
@@ -32,10 +33,10 @@ def run_gateway_dns_test(
     Returns:
         各ホスト名に対するTestResultのリスト
     """
-    gateway_ip = get_default_gateway()
+    dns_servers = get_system_dns_servers()
 
-    # ゲートウェイ取得失敗時は全テスト項目をFAIL
-    if gateway_ip is None:
+    # DNSサーバー取得失敗時は全テスト項目をFAIL
+    if not dns_servers:
         return [
             TestResult(
                 test_name=f"gw_dns_{t.hostname}",
@@ -43,28 +44,28 @@ def run_gateway_dns_test(
                 status=TestStatus.FAIL,
                 timestamp=datetime.now(timezone.utc),
                 details={"hostname": t.hostname, "expect": t.expect},
-                error_message="デフォルトゲートウェイの取得に失敗しました",
+                error_message="DNSサーバーの取得に失敗しました",
             )
             for t in targets
         ]
 
     results: list[TestResult] = []
     for target in targets:
-        result = _resolve_single(target, gateway_ip, wan_path)
+        result = _resolve_single(target, dns_servers, wan_path)
         results.append(result)
     return results
 
 
 def _resolve_single(
-    target: GatewayDnsTarget, gateway_ip: str, wan_path: WANPath
+    target: GatewayDnsTarget, dns_servers: list[str], wan_path: WANPath
 ) -> TestResult:
-    """単一ホスト名のゲートウェイDNS解決を実行する"""
+    """単一ホスト名のDNS解決を実行する"""
     test_name = f"gw_dns_{target.hostname}"
     start = time.monotonic()
 
-    # ゲートウェイIPをDNSサーバーとして指定
+    # OSに設定されたDNSサーバーを使用
     resolver = dns.resolver.Resolver()
-    resolver.nameservers = [gateway_ip]
+    resolver.nameservers = dns_servers
     resolver.lifetime = 10.0
 
     try:
@@ -81,7 +82,7 @@ def _resolve_single(
             status=status,
             timestamp=datetime.now(timezone.utc),
             details={
-                "gateway_ip": gateway_ip,
+                "dns_servers": dns_servers,
                 "hostname": target.hostname,
                 "expect": target.expect,
                 "resolved_ips": resolved_ips,
@@ -98,7 +99,7 @@ def _resolve_single(
             status=status,
             timestamp=datetime.now(timezone.utc),
             details={
-                "gateway_ip": gateway_ip,
+                "dns_servers": dns_servers,
                 "hostname": target.hostname,
                 "expect": target.expect,
                 "resolved_ips": [],
@@ -118,7 +119,7 @@ def _resolve_single(
             status=status,
             timestamp=datetime.now(timezone.utc),
             details={
-                "gateway_ip": gateway_ip,
+                "dns_servers": dns_servers,
                 "hostname": target.hostname,
                 "expect": target.expect,
                 "resolved_ips": [],
@@ -133,7 +134,7 @@ def _resolve_single(
             status=TestStatus.FAIL,
             timestamp=datetime.now(timezone.utc),
             details={
-                "gateway_ip": gateway_ip,
+                "dns_servers": dns_servers,
                 "hostname": target.hostname,
                 "expect": target.expect,
                 "reason": type(e).__name__,
