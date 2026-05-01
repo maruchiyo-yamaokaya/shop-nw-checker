@@ -29,13 +29,18 @@ class TestEvaluateResult:
         assert status == TestStatus.FAIL
 
     def test_nxdomain期待で解決失敗はPASS(self):
-        """nxdomain期待値で名前解決が失敗した場合はPASS (Req 2.6)"""
-        status = _evaluate_result("nxdomain", [], resolved=False)
+        """nxdomain期待値でNXDOMAINが返った場合はPASS (Req 2.6)"""
+        status = _evaluate_result("nxdomain", [], resolved=False, nxdomain=True)
         assert status == TestStatus.PASS
 
     def test_nxdomain期待で解決成功はFAIL(self):
         """nxdomain期待値で名前解決が成功した場合はFAIL (Req 2.6)"""
         status = _evaluate_result("nxdomain", ["93.184.216.34"], resolved=True)
+        assert status == TestStatus.FAIL
+
+    def test_nxdomain期待でNoAnswerはFAIL(self):
+        """nxdomain期待値でNoAnswer（NXDOMAIN以外の解決失敗）はFAIL"""
+        status = _evaluate_result("nxdomain", [], resolved=False, nxdomain=False)
         assert status == TestStatus.FAIL
 
     def test_resolve_success期待で解決成功はPASS(self):
