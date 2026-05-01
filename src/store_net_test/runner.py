@@ -306,20 +306,60 @@ def _run_reverse_check(
     return results
 
 
+# VLAN種別ごとの期待IP範囲（CIDR表記）
+VLAN_EXPECTED_RANGES: dict[str, list[str]] = {
+    "店舗": [
+        "192.168.2.0/23",      # 192.168.2.0 ~ 192.168.3.255
+        "192.168.4.0/22",      # 192.168.4.0 ~ 192.168.7.255
+        "192.168.8.0/21",      # 192.168.8.0 ~ 192.168.15.255
+        "192.168.16.0/20",     # 192.168.16.0 ~ 192.168.31.255
+        "192.168.32.0/19",     # 192.168.32.0 ~ 192.168.63.255
+        "192.168.64.0/18",     # 192.168.64.0 ~ 192.168.127.255
+        "192.168.128.0/17",    # 192.168.128.0 ~ 192.168.255.255
+    ],
+    "POS": ["192.168.1.0/24"],       # 192.168.1.0 ~ 192.168.1.255
+    "公共": ["172.16.0.0/24"],        # 172.16.0.0 ~ 172.16.0.255
+}
+
+
 def prompt_vlan_connection(vlan_type: str) -> None:
-    """VLAN接続準備プロンプトを表示し、ユーザーのEnter入力を待つ
+    """VLAN接続準備プロンプトを表示し、IP範囲チェック付きでユーザーのEnter入力を待つ
 
     各VLAN種別のテスト開始前に呼び出され、ユーザーに接続切替を促す。
-    (Req 4.1, 4.2, 4.3, 4.5)
+    Enter後にローカルIPを取得し、期待するVLAN範囲内かチェックする。
+    範囲外の場合は再度接続を促す。
 
     Args:
         vlan_type: VLAN種別名（「店舗」「POS」「公共」のいずれか）
     """
-    console.print(
-        f"\n[bold yellow]{vlan_type}VLANに接続してください。"
-        f"準備ができたら[Enter]を押してください[/bold yellow]"
-    )
-    input()
+    expected_ranges = VLAN_EXPECTED_RANGES.get(vlan_type)
+
+    while True:
+        console.print(
+            f"\n[bold yellow]{vlan_type}VLANに接続してください。"
+            f"準備ができたら[Enter]を押してください[/bold yellow]"
+        )
+        input()
+
+        # IP範囲チェック
+        if expected_ranges is None:
+            break  # 範囲定義がないVLANはチェックスキップ
+
+        local_ip = get_local_ip()
+        if local_ip is None:
+            console.print("  [yellow]⚠ ローカルIPを取得できませんでした。チェックをスキップします。[/yellow]")
+            break
+
+        if is_ip_in_ranges(local_ip, expected_ranges):
+            console.print(f"  [green]✓ {vlan_type}VLAN範囲内 ({local_ip})[/green]")
+            break
+        else:
+            console.print(
+                f"  [red]✗ {vlan_type}VLAN範囲外です（現在: {local_ip}）[/red]"
+            )
+            console.print(
+                f"  [dim]  期待範囲: {', '.join(expected_ranges)}[/dim]"
+            )
 
 
 def _run_negative_dns_test(targets: list[str], wan_path: WANPath) -> list[TestResult]:
