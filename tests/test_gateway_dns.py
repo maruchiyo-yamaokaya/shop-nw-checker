@@ -38,9 +38,19 @@ class TestEvaluateResult:
         status = _evaluate_result("nxdomain", ["93.184.216.34"], resolved=True)
         assert status == TestStatus.FAIL
 
-    def test_nxdomain期待でNoAnswerはFAIL(self):
-        """nxdomain期待値でNoAnswer（NXDOMAIN以外の解決失敗）はFAIL"""
+    def test_nxdomain期待でNoAnswerもPASS(self):
+        """nxdomain期待値でNoAnswer（名前解決失敗）もブロックとみなしPASS"""
         status = _evaluate_result("nxdomain", [], resolved=False, nxdomain=False)
+        assert status == TestStatus.PASS
+
+    def test_nxdomain期待で0000解決はPASS(self):
+        """nxdomain期待値で0.0.0.0に解決（DNSシンクホール）もブロックとみなしPASS"""
+        status = _evaluate_result("nxdomain", ["0.0.0.0"], resolved=True, nxdomain=False)
+        assert status == TestStatus.PASS
+
+    def test_nxdomain期待で通常IP解決はFAIL(self):
+        """nxdomain期待値で通常のIPに解決された場合はFAIL（ブロックされていない）"""
+        status = _evaluate_result("nxdomain", ["93.184.216.34"], resolved=True, nxdomain=False)
         assert status == TestStatus.FAIL
 
     def test_resolve_success期待で解決成功はPASS(self):

@@ -157,14 +157,22 @@ def _evaluate_result(
         resolved: 名前解決が成功したかどうか
         nxdomain: NXDOMAIN応答だったかどうか（NoAnswer等と区別するため）
     """
+    # ブロック判定用: 0.0.0.0 に解決された場合もブロックとみなす
+    resolved_to_sinkhole = resolved and all(ip == "0.0.0.0" for ip in resolved_ips)
+
     if expect == "private_ip":
         # 解決成功かつプライベートIPならPASS
         if resolved and any(is_private_ip(ip) for ip in resolved_ips):
             return TestStatus.PASS
         return TestStatus.FAIL
     elif expect == "nxdomain":
-        # NXDOMAINが返った場合のみPASS（NoAnswer/NoNameserversはFAIL）
-        return TestStatus.PASS if nxdomain else TestStatus.FAIL
+        # ブロックされていればPASS:
+        # - NXDOMAIN応答
+        # - NoAnswer/NoNameservers（名前解決失敗）
+        # - 0.0.0.0 に解決（DNSシンクホール方式のブロック）
+        if nxdomain or not resolved or resolved_to_sinkhole:
+            return TestStatus.PASS
+        return TestStatus.FAIL
     elif expect == "resolve_success":
         # 名前解決成功ならPASS
         return TestStatus.PASS if resolved else TestStatus.FAIL
