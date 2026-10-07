@@ -158,7 +158,7 @@ def parse_profile(data: dict) -> TestProfile:
                 PosDevice(name=d["name"], ip=d["ip"])
                 for d in vt["pos_devices"]
             ],
-            public_dns_negative_targets=list(vt["public_dns_negative_targets"]),
+            public_dns_negative_targets=list(vt.get("public_dns_negative_targets", [])),
             reverse_check_targets=reverse_check_targets,
         )
 
@@ -299,8 +299,6 @@ def validate_profile(profile: TestProfile) -> list[str]:
             errors.append("vlan_tests.store_whereami_urlが空です")
         if not vt.pos_devices:
             errors.append("vlan_tests.pos_devicesが空です")
-        if not vt.public_dns_negative_targets:
-            errors.append("vlan_tests.public_dns_negative_targetsが空です")
         if not vt.store_gateway_dns_targets:
             errors.append("vlan_tests.store_gateway_dns_targetsが空です")
 

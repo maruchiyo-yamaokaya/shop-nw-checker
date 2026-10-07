@@ -526,7 +526,7 @@ def _run_tests_for_wan_path(
             except Exception as e:
                 console.print(f"  [red]⚠ ローカル機材ping疎通テストでエラー: {e}[/red]")
 
-        elif vlan_type == "公共":
+        elif vlan_type == "公共" and profile.vlan_tests.public_dns_negative_targets:
             # 内部NWリソースDNS解決不可テスト（ネガティブDNS）
             console.print(
                 f"  [cyan]▶ 内部NWリソースDNS解決不可テスト[/cyan] ({wan_path.value.upper()})"

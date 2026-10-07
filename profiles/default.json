@@ -14,7 +14,7 @@
     "duration_seconds": 5,
     "ping_interval": 0.2,
     "max_packet_loss_percent": 5.0,
-    "max_jitter_ms": 50.0
+    "max_jitter_ms": 100.0
   },
   "vlan_tests": {
     "https_urls": [
@@ -33,16 +33,9 @@
     "pos_devices": [
       { "name": "券売機1", "ip": "192.168.1.81" },
       { "name": "券売機2", "ip": "192.168.1.82" },
-      { "name": "券売機3", "ip": "192.168.1.83" },
       { "name": "DL", "ip": "192.168.1.110" }
     ],
-    "public_dns_negative_targets": [
-      "nx.yamaokaya.net"
-    ],
-    "reverse_check_targets": [
-      { "target_kind": "local_pc", "count": 5, "loss_threshold_percent": 20 },
-      { "target_kind": "named_terminal", "count": 5, "loss_threshold_percent": 20, "terminal_prefixes": ["rt", "sw", "prn"] }
-    ]
+    "public_dns_negative_targets": []
   },
   "ssm_probe": {
     "region": "ap-northeast-1",

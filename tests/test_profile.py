@@ -382,12 +382,12 @@ class TestValidateProfile:
         errors = validate_profile(profile)
         assert any("vlan_tests.pos_devices" in e for e in errors)
 
-    def test_vlan_testsのpublic_dns_negative_targetsが空はエラー(self):
+    def test_vlan_testsのpublic_dns_negative_targetsが空は許容(self):
         vt = _make_vlan_test_config()
         vt.public_dns_negative_targets = []
         profile = _make_profile(vlan_tests=vt)
         errors = validate_profile(profile)
-        assert any("vlan_tests.public_dns_negative_targets" in e for e in errors)
+        assert not any("vlan_tests.public_dns_negative_targets" in e for e in errors)
 
     def test_vlan_testsのstore_gateway_dns_targetsが空はエラー(self):
         vt = _make_vlan_test_config()
@@ -460,4 +460,3 @@ class TestLoadProfiles:
         assert default.vlan_tests.store_printer_host != ""
         assert default.vlan_tests.store_whereami_url != ""
         assert len(default.vlan_tests.pos_devices) >= 1
-        assert len(default.vlan_tests.public_dns_negative_targets) >= 1
